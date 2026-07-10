@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  R K Public School brand palette
+  ---------------------------------
+  Cream   #E5CB90  → warm surfaces / secondary
+  Orange  #FF9E20  → highlights / accents (exposed as --warning + brand.orange)
+  Ink     #1D2128  → foreground text + dark sidebar
+  Blue    #5996FF  → brand blue (focus ring + gradients); primary is a
+                     slightly deeper shade of the same hue so white text on
+                     buttons/links stays legible (WCAG AA).
+*/
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 218 16% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 218 16% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 218 16% 14%;
+    --primary: 219 79% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 42 55% 90%;
+    --secondary-foreground: 218 24% 18%;
+    --muted: 40 30% 95%;
+    --muted-foreground: 218 12% 42%;
+    --accent: 42 52% 90%;
+    --accent-foreground: 218 24% 18%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 34 100% 50%;
+    --warning-foreground: 218 16% 14%;
+    --border: 40 22% 87%;
+    --input: 40 22% 84%;
+    --ring: 218 100% 67%;
+    --radius: 0.7rem;
+
+    /* Raw school palette (constant across light/dark) */
+    --brand-cream: 42 62% 73%;
+    --brand-orange: 34 100% 56%;
+    --brand-ink: 218 16% 14%;
+    --brand-blue: 218 100% 67%;
+  }
+
+  .dark {
+    --background: 218 16% 11%;
+    --foreground: 40 33% 96%;
+    --card: 218 16% 14%;
+    --card-foreground: 40 33% 96%;
+    --popover: 218 16% 14%;
+    --popover-foreground: 40 33% 96%;
+    --primary: 218 100% 67%;
+    --primary-foreground: 218 30% 12%;
+    --secondary: 218 14% 20%;
+    --secondary-foreground: 40 33% 96%;
+    --muted: 218 14% 20%;
+    --muted-foreground: 218 10% 62%;
+    --accent: 218 14% 22%;
+    --accent-foreground: 40 33% 96%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 50% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 34 100% 55%;
+    --warning-foreground: 218 16% 14%;
+    --border: 218 14% 22%;
+    --input: 218 14% 22%;
+    --ring: 218 100% 67%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-heading {
+    font-family: "Poppins", "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+  }
+}
+
+/* Slim, on-brand scrollbars */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+/* Clean margins + force colours when printing (e.g. the fee receipt). */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

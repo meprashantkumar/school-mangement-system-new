@@ -1,0 +1,48 @@
+import dotenv from "dotenv";
+
+dotenv.config();
+
+export const env = {
+  port: Number(process.env.PORT) || 5000,
+  nodeEnv: process.env.NODE_ENV || "development",
+  mongoUri: process.env.MONGO_URI || "",
+  jwtSecret: process.env.JWT_SECRET || "dev_secret",
+  jwtExpire: process.env.JWT_EXPIRE || "7d",
+  clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
+  superAdmin: {
+    email: process.env.SUPERADMIN_EMAIL || "superadmin@school.com",
+    password: process.env.SUPERADMIN_PASSWORD || "super123",
+    name: process.env.SUPERADMIN_NAME || "Super Admin",
+  },
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || "",
+    keySecret: process.env.RAZORPAY_KEY_SECRET || "",
+  },
+  // School name shown on receipts / emails.
+  schoolName: process.env.SCHOOL_NAME || "Your School",
+  // Convenience fee added to online (Razorpay) payments made from home.
+  onlinePlatformFee: Number(process.env.ONLINE_PLATFORM_FEE) || 20,
+  // Auto late fee: charged per day past an invoice's due date (0 disables the
+  // feature). `max` caps the total late fee per invoice (0 = no cap).
+  lateFee: {
+    perDay: Number(process.env.LATE_FEE_PER_DAY) || 0,
+    max: Number(process.env.LATE_FEE_MAX) || 0,
+  },
+  // School's UPI details for the counter QR (no gateway charge).
+  upi: {
+    vpa: process.env.SCHOOL_UPI_VPA || "",
+    name: process.env.SCHOOL_UPI_NAME || "School Fee Office",
+  },
+  email: {
+    host: process.env.EMAIL_HOST || "",
+    port: Number(process.env.EMAIL_PORT) || 465,
+    user: process.env.EMAIL_USER || "",
+    pass: process.env.EMAIL_PASS || "",
+    from: process.env.EMAIL_FROM || "School Fee System <no-reply@sfms.local>",
+  },
+};
+
+if (!env.mongoUri) {
+  console.error("MONGO_URI is not set in .env");
+  process.exit(1);
+}
