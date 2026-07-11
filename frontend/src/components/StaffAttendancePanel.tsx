@@ -46,6 +46,7 @@ export function StaffAttendancePanel() {
   const [roster, setRoster] = useState<StaffRosterDay | null>(null);
   const [loading, setLoading] = useState(false);
   const [bulking, setBulking] = useState(false);
+  const [filter, setFilter] = useState<"all" | "teacher" | "staff">("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,21 +102,36 @@ export function StaffAttendancePanel() {
     }
   };
 
-  // Recompute the summary live from the (optimistically updated) people list, so
+  // People shown after the Teachers/Staff filter.
+  const people = useMemo(
+    () => (roster ? roster.people.filter((p) => filter === "all" || p.kind === filter) : []),
+    [roster, filter]
+  );
+
+  const kindCounts = useMemo(() => {
+    const all = roster?.people || [];
+    return {
+      all: all.length,
+      teacher: all.filter((p) => p.kind === "teacher").length,
+      staff: all.filter((p) => p.kind === "staff").length,
+    };
+  }, [roster]);
+
+  // Recompute the summary live from the (filtered, optimistically updated) list, so
   // single taps update the tallies immediately instead of waiting for a reload.
   const c = useMemo(() => {
     if (!roster) return null;
     let present = 0;
     let absent = 0;
     const pcts: number[] = [];
-    roster.people.forEach((p) => {
+    people.forEach((p) => {
       if (p.status === "present") present += 1;
       else if (p.status === "absent") absent += 1;
       if (p.pct !== null) pcts.push(p.pct);
     });
     const avgPct = pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
-    return { present, absent, unmarked: roster.people.length - present - absent, total: roster.people.length, avgPct };
-  }, [roster]);
+    return { present, absent, unmarked: people.length - present - absent, total: people.length, avgPct };
+  }, [roster, people]);
 
   return (
     <Card>
@@ -154,6 +170,22 @@ export function StaffAttendancePanel() {
         ) : (
           roster && (
             <>
+              {/* Teachers / Staff filter */}
+              <div className="flex flex-wrap gap-2">
+                {([["all", "All"], ["teacher", "Teachers"], ["staff", "Staff"]] as const).map(([val, lbl]) => (
+                  <button
+                    key={val}
+                    onClick={() => setFilter(val)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-sm font-medium transition-colors",
+                      filter === val ? "border-primary bg-primary text-primary-foreground" : "hover:bg-accent"
+                    )}
+                  >
+                    {lbl} <span className="opacity-70">({kindCounts[val]})</span>
+                  </button>
+                ))}
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-4 text-sm">
                   <span className="font-semibold text-emerald-600">{c?.present} present</span>
@@ -169,15 +201,27 @@ export function StaffAttendancePanel() {
               </div>
 
               <div className="space-y-2">
-                {roster.people.length === 0 ? (
+                {people.length === 0 ? (
                   <p className="py-8 text-center text-muted-foreground">
-                    No teachers or staff yet. Add them under Teachers and Staff.
+                    {roster.people.length === 0
+                      ? "No teachers or staff yet. Add them under Teachers and Staff."
+                      : `No ${filter === "teacher" ? "teachers" : "staff"} to show.`}
                   </p>
                 ) : (
-                  roster.people.map((p) => (
+                  people.map((p) => (
                     <div key={p._id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{p.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-medium">{p.name}</p>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                              p.kind === "teacher" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+                            )}
+                          >
+                            {p.kind === "teacher" ? "Teacher" : "Staff"}
+                          </span>
+                        </div>
                         <div className="mt-0.5 flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">{p.category} · {p.role}</span>
                           <PctBadge pct={p.pct} />
