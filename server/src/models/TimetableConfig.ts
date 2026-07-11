@@ -44,15 +44,16 @@ export const TimetableConfig = mongoose.model<ITimetableConfig>(
   timetableConfigSchema
 );
 
-// Sensible starting schedule if the school hasn't set one yet.
+// Sensible starting schedule if the school hasn't set one yet — just plain
+// numbered periods. The school adds/removes periods to taste; times and breaks
+// are intentionally left out (a period is only "Period N + subject + teacher").
 export const DEFAULT_PERIODS: IPeriodSlot[] = [
-  { period: 1, label: "Period 1", start: "08:00", end: "08:45", isBreak: false },
-  { period: 2, label: "Period 2", start: "08:45", end: "09:30", isBreak: false },
-  { period: 3, label: "Period 3", start: "09:30", end: "10:15", isBreak: false },
-  { period: 4, label: "Short Break", start: "10:15", end: "10:30", isBreak: true },
-  { period: 5, label: "Period 4", start: "10:30", end: "11:15", isBreak: false },
-  { period: 6, label: "Period 5", start: "11:15", end: "12:00", isBreak: false },
-  { period: 7, label: "Lunch", start: "12:00", end: "12:30", isBreak: true },
-  { period: 8, label: "Period 6", start: "12:30", end: "13:15", isBreak: false },
-  { period: 9, label: "Period 7", start: "13:15", end: "14:00", isBreak: false },
+  { period: 1, label: "Period 1", start: "", end: "", isBreak: false },
+  { period: 2, label: "Period 2", start: "", end: "", isBreak: false },
+  { period: 3, label: "Period 3", start: "", end: "", isBreak: false },
+  { period: 4, label: "Period 4", start: "", end: "", isBreak: false },
+  { period: 5, label: "Period 5", start: "", end: "", isBreak: false },
+  { period: 6, label: "Period 6", start: "", end: "", isBreak: false },
+  { period: 7, label: "Period 7", start: "", end: "", isBreak: false },
+  { period: 8, label: "Period 8", start: "", end: "", isBreak: false },
 ];

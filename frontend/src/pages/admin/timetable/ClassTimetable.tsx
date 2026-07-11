@@ -151,19 +151,11 @@ export default function ClassTimetable() {
             <tbody>
               {periods.map((p) => (
                 <tr key={p.period} className="border-b last:border-0">
-                  <td className="whitespace-nowrap p-2 align-top">
-                    <div className="font-medium">{p.label}</div>
-                    {(p.start || p.end) && <div className="text-xs text-muted-foreground">{p.start}–{p.end}</div>}
-                  </td>
-                  {p.isBreak ? (
-                    <td colSpan={days.length} className="bg-amber-50 p-2 text-center text-xs font-medium uppercase tracking-wide text-amber-700">
-                      {p.label}
-                    </td>
-                  ) : (
-                    days.map((d) => {
-                      const c = cells[key(d.value, p.period)] || { subjectName: "", teacherName: "" };
-                      return (
-                        <td key={d.value} className="p-1.5 align-top">
+                  <td className="whitespace-nowrap p-2 align-top font-medium">{p.label}</td>
+                  {days.map((d) => {
+                    const c = cells[key(d.value, p.period)] || { subjectName: "", teacherName: "" };
+                    return (
+                      <td key={d.value} className="p-1.5 align-top">
                           <select
                             value={c.subject || ""}
                             onChange={(e) => {
@@ -188,8 +180,7 @@ export default function ClassTimetable() {
                           </select>
                         </td>
                       );
-                    })
-                  )}
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -238,18 +229,18 @@ function PeriodConfigEditor({
         </div>
       </div>
       <div className="space-y-2">
+        <p className="text-sm font-medium">Periods</p>
         {periods.map((p, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-2">
-            <Input value={p.label} onChange={(e) => update(i, { label: e.target.value })} className="h-9 w-40" placeholder="Label" />
-            <Input type="time" value={p.start} onChange={(e) => update(i, { start: e.target.value })} className="h-9 w-32" />
-            <Input type="time" value={p.end} onChange={(e) => update(i, { end: e.target.value })} className="h-9 w-32" />
-            <label className="flex items-center gap-1 text-sm">
-              <input type="checkbox" checked={p.isBreak} onChange={(e) => update(i, { isBreak: e.target.checked })} /> Break
-            </label>
+          <div key={i} className="flex items-center gap-2">
+            <span className="w-8 shrink-0 text-center text-sm font-semibold text-muted-foreground">{i + 1}</span>
+            <Input value={p.label} onChange={(e) => update(i, { label: e.target.value })} className="h-9 max-w-xs" placeholder={`Period ${i + 1}`} />
             <Button variant="ghost" size="icon" className="text-destructive" onClick={() => removeP(i)}><Trash2 className="h-4 w-4" /></Button>
           </div>
         ))}
         <Button variant="outline" size="sm" onClick={addP}><Plus className="h-4 w-4" /> Add period</Button>
+        <p className="text-xs text-muted-foreground">
+          Set as many periods as you need. For a half day, just leave the later periods blank in the grid.
+        </p>
       </div>
     </Card>
   );
