@@ -150,6 +150,82 @@ function restoreFromStream(req: Request, mode: "merge" | "replace"): Promise<voi
   });
 }
 
+// A clean, human-readable Drive filename in IST, e.g. "RKPS 26 Jul 2026, 10-23 pm.archive.gz".
+// (Colons are swapped for dashes so the file also downloads fine on Windows.)
+function driveFileName(): string {
+  const pretty = new Date().toLocaleString("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `RKPS ${pretty.replace(/:/g, "-")}.archive.gz`;
+}
+
+// Uploads a local file to the rclone remote (Google Drive).
+function rcloneCopy(localPath: string, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args: string[] = [];
+    if (env.rcloneConfig) args.push("--config", env.rcloneConfig);
+    args.push("copyto", localPath, dest);
+
+    const child = spawn("rclone", args, { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (d) => {
+      stderr += d.toString();
+      if (stderr.length > 8000) stderr = stderr.slice(-8000);
+    });
+    child.on("error", (e) => {
+      reject(
+        new ApiError(
+          500,
+          "Could not run rclone. Ensure it's installed and connected to Google Drive on the server. (" +
+            e.message +
+            ")"
+        )
+      );
+    });
+    child.on("close", (code) => {
+      if (code === 0) return resolve();
+      console.error(`rclone failed (exit ${code}):\n${stderr}`);
+      reject(new ApiError(500, `Upload to Google Drive failed (rclone exit ${code}). Check the server logs.`));
+    });
+  });
+}
+
+// POST /api/backup/gdrive  (superadmin only)
+// Dumps the database and uploads it straight to Google Drive with a clean,
+// dated filename — an on-demand version of the nightly cron backup.
+export const backupToDrive = asyncHandler(async (req, res) => {
+  if (running) {
+    throw new ApiError(409, "A backup or restore is already in progress. Please wait a moment.");
+  }
+  if (!env.mongoUri) {
+    throw new ApiError(500, "Database connection is not configured.");
+  }
+
+  running = true;
+  const dir = env.backupDir || os.tmpdir();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const localPath = path.join(dir, `rkps-manual-${stamp}.archive.gz`);
+  const driveName = driveFileName();
+  const dest = `${env.backupRemote.replace(/\/+$/, "")}/manual/${driveName}`;
+
+  try {
+    await fs.promises.mkdir(dir, { recursive: true });
+    await dumpToFile(localPath);
+    await rcloneCopy(localPath, dest);
+    logAudit(req, AUDIT.BACKUP, `Backed up to Google Drive as "${driveName}"`);
+    res.json({ ok: true, file: driveName });
+  } finally {
+    running = false;
+    fs.promises.unlink(localPath).catch(() => {});
+  }
+});
+
 // POST /api/backup/restore?mode=merge|replace  (superadmin only)
 // The request body IS the uploaded .archive.gz file (sent as raw binary, so it
 // streams straight into mongorestore without buffering the whole file in RAM).

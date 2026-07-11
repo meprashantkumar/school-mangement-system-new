@@ -19,6 +19,20 @@ type RestoreMode = "merge" | "replace";
 
 export default function Backup() {
   const [downloading, setDownloading] = useState(false);
+  const [savingDrive, setSavingDrive] = useState(false);
+
+  const backupToDrive = async () => {
+    setSavingDrive(true);
+    const t = toast.loading("Backing up to Google Drive…");
+    try {
+      const { data } = await api.post("/backup/gdrive");
+      toast.success(`Saved to Google Drive: ${data.file}`, { id: t, duration: 7000 });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Backup to Google Drive failed.", { id: t });
+    } finally {
+      setSavingDrive(false);
+    }
+  };
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<RestoreMode>("merge");
   const [confirmText, setConfirmText] = useState("");
@@ -116,13 +130,20 @@ export default function Backup() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={downloadBackup} disabled={downloading} size="lg">
-            <Download className="h-4 w-4" />
-            {downloading ? "Preparing backup…" : "Download backup now"}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={downloadBackup} disabled={downloading} size="lg">
+              <Download className="h-4 w-4" />
+              {downloading ? "Preparing backup…" : "Download backup now"}
+            </Button>
+            <Button onClick={backupToDrive} disabled={savingDrive} size="lg" variant="outline">
+              <CloudUpload className="h-4 w-4" />
+              {savingDrive ? "Saving to Google Drive…" : "Back up to Google Drive now"}
+            </Button>
+          </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            The file is a compressed <code>.archive.gz</code> database dump. Store it privately —
-            it contains all school records.
+            <b>Download</b> saves a compressed <code>.archive.gz</code> to your computer.
+            <b> Google Drive</b> saves a dated copy (e.g. “RKPS 26 Jul 2026, 10-23 pm”) to your
+            Drive backup folder. Both contain all school records — keep them private.
           </p>
         </CardContent>
       </Card>

@@ -37,6 +37,9 @@ export const env = {
   // streaming it to the admin. Empty → OS temp dir. (The automated daily backup
   // is a separate cron script that also uploads off-box; see deploy/backup/.)
   backupDir: process.env.BACKUP_DIR || "",
+  // rclone remote + config for the "Back up to Google Drive" button.
+  backupRemote: process.env.BACKUP_REMOTE || "gdrive:sfms-backups",
+  rcloneConfig: process.env.RCLONE_CONFIG || "",
   email: {
     host: process.env.EMAIL_HOST || "",
     port: Number(process.env.EMAIL_PORT) || 465,

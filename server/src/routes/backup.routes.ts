@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { protect, authorize } from "../middleware/auth";
-import { runBackup, restoreBackup } from "../controllers/backup.controller";
+import { runBackup, restoreBackup, backupToDrive } from "../controllers/backup.controller";
 
 const router = Router();
 
@@ -8,6 +8,7 @@ const router = Router();
 router.use(protect, authorize("superadmin"));
 
 router.post("/run", runBackup);
+router.post("/gdrive", backupToDrive);
 
 // Restore reads the uploaded archive as a raw binary stream (Content-Type is
 // not application/json, so the global JSON body parser leaves the stream intact
