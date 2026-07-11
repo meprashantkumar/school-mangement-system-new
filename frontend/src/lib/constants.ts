@@ -22,6 +22,23 @@ export const CLASSES = [
 
 export const SECTIONS = ["A", "B", "C", "D", "E", "F", "G"];
 
+// Social categories offered on the admission form / student record.
+export const CATEGORIES = ["General", "OBC", "SC", "ST", "EWS", "Other"];
+
+// ISO weekday (1=Mon … 7=Sun) used by timetables. Sunday is off by default.
+export const WEEKDAYS = [
+  { value: 1, short: "Mon", long: "Monday" },
+  { value: 2, short: "Tue", long: "Tuesday" },
+  { value: 3, short: "Wed", long: "Wednesday" },
+  { value: 4, short: "Thu", long: "Thursday" },
+  { value: 5, short: "Fri", long: "Friday" },
+  { value: 6, short: "Sat", long: "Saturday" },
+  { value: 7, short: "Sun", long: "Sunday" },
+];
+
+export const weekdayShort = (d: number) => WEEKDAYS.find((w) => w.value === d)?.short || "";
+export const weekdayLong = (d: number) => WEEKDAYS.find((w) => w.value === d)?.long || "";
+
 // The active academic session (keep in sync with the server's utils/academics.ts).
 export const CURRENT_SESSION = "2026-27";
 

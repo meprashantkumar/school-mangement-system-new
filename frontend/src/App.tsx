@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Apply from "./pages/Admissions";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Receipt from "./pages/Receipt";
@@ -21,6 +22,11 @@ import Subjects from "./pages/admin/Subjects";
 import ExamsResults from "./pages/admin/ExamsResults";
 import RecycleBin from "./pages/admin/RecycleBin";
 import Backup from "./pages/admin/Backup";
+import AdmissionsAdmin from "./pages/admin/Admissions";
+import Timetable from "./pages/admin/Timetable";
+import ClassTimetable from "./pages/admin/timetable/ClassTimetable";
+import TeacherTimetable from "./pages/admin/timetable/TeacherTimetable";
+import ExamTimetable from "./pages/admin/timetable/ExamTimetable";
 import Portal from "./pages/portal/Portal";
 import ReportCard from "./pages/portal/ReportCard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
@@ -33,6 +39,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/apply" element={<Apply />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
 
@@ -85,6 +92,11 @@ export default function App() {
         <Route path="/admin/dashboard" element={<Dashboard />} />
         <Route path="/admin/students" element={<Students />} />
         <Route path="/admin/students/:id" element={<StudentDetails />} />
+        <Route path="/admin/admissions" element={<AdmissionsAdmin />} />
+        <Route path="/admin/timetable" element={<Timetable />} />
+        <Route path="/admin/timetable/class" element={<ClassTimetable />} />
+        <Route path="/admin/timetable/teacher" element={<TeacherTimetable />} />
+        <Route path="/admin/timetable/exam" element={<ExamTimetable />} />
         <Route path="/admin/fees" element={<FeeSetup />} />
         <Route path="/admin/fee-generation" element={<FeeGeneration />} />
         <Route path="/admin/teachers" element={<Teachers />} />

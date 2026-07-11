@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Crest } from "@/components/Brand";
 import { Pager } from "@/components/Pager";
+import { PortalTimetable } from "@/components/PortalTimetable";
 
 const RESULTS_PER_EXAM_PAGE = 4;
 const DUES_PER_PAGE = 4;
@@ -380,6 +381,9 @@ export default function Portal() {
             </div>
           </section>
         )}
+
+        {/* Timetable + exam schedule */}
+        <PortalTimetable />
 
         {/* History */}
         <section>

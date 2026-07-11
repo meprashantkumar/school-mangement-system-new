@@ -43,6 +43,8 @@ export const AUDIT = {
   SUBJECT: "Subject",
   EXAM: "Exam",
   RESULT: "Result",
+  ADMISSION: "Admission",
+  TIMETABLE: "Timetable",
   VOID: "Void/Reverse",
   RESTORE: "Restore",
   BACKUP: "Backup",

@@ -9,7 +9,8 @@ export type TrashKind =
   | "FeeStructure"
   | "FeeHead"
   | "Subject"
-  | "Exam";
+  | "Exam"
+  | "Admission";
 
 export interface ITrash extends Document {
   kind: TrashKind;

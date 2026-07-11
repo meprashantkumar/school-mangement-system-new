@@ -358,3 +358,91 @@ export interface AppConfig {
   lateFeePerDay?: number;
   lateFeeMax?: number;
 }
+
+// ---- Admissions ----
+
+export type AdmissionStatus = "pending" | "approved" | "rejected";
+
+export interface Admission {
+  _id: string;
+  applicationNo: string;
+  studentName: string;
+  gender?: string;
+  dateOfBirth?: string;
+  applyingForClass: string;
+  session: string;
+  previousSchool?: string;
+  category: string;
+  parentName?: string;
+  parentPhone?: string;
+  parentEmail?: string;
+  address?: string;
+  message?: string;
+  status: AdmissionStatus;
+  reviewNote?: string;
+  reviewedAt?: string;
+  convertedStudent?:
+    | { _id: string; name: string; admissionNo: string; class: string; section?: string }
+    | string;
+  createdAt: string;
+}
+
+// ---- Timetable ----
+
+export interface PeriodSlot {
+  period: number;
+  label: string;
+  start: string;
+  end: string;
+  isBreak: boolean;
+}
+
+export interface TimetableConfig {
+  periods: PeriodSlot[];
+  workingDays: number[];
+}
+
+export interface TimetableSlot {
+  day: number;
+  period: number;
+  subject?: string;
+  subjectName: string;
+  teacher?: string;
+  teacherName: string;
+  room?: string;
+}
+
+export interface ClassTimetable {
+  _id?: string;
+  class: string;
+  section: string;
+  session: string;
+  slots: TimetableSlot[];
+}
+
+export interface TeacherTTEntry {
+  day: number;
+  period: number;
+  class: string;
+  section: string;
+  subjectName: string;
+  room?: string;
+}
+
+export interface ExamPaper {
+  subject?: string;
+  subjectName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  note?: string;
+}
+
+export interface ExamTimetable {
+  _id?: string;
+  exam: string;
+  session?: string;
+  class?: string;
+  examName?: string;
+  papers: ExamPaper[];
+}

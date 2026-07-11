@@ -11,6 +11,7 @@ import {
   X,
   ClipboardCheck,
   Trophy,
+  CalendarRange,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
@@ -21,6 +22,7 @@ import type { AttendanceRow, AttendanceStatus, RosterDay, TeacherAssignment } fr
 import { Button } from "@/components/ui/button";
 import { Crest } from "@/components/Brand";
 import { TeacherResults } from "@/components/TeacherResults";
+import { TeacherTimetableTab } from "@/components/TeacherTimetableTab";
 
 const todayKey = () => new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD" (local)
 
@@ -75,7 +77,7 @@ export default function TeacherDashboard() {
   const [roster, setRoster] = useState<RosterDay | null>(null);
   const [loading, setLoading] = useState(false);
   const [bulking, setBulking] = useState(false);
-  const [tab, setTab] = useState<"attendance" | "results">("attendance");
+  const [tab, setTab] = useState<"attendance" | "results" | "timetable">("attendance");
 
   // Load the teacher's assigned classes once.
   useEffect(() => {
@@ -266,11 +268,20 @@ export default function TeacherDashboard() {
               >
                 <Trophy className="h-4 w-4" /> Results
               </Button>
+              <Button
+                variant={tab === "timetable" ? "default" : "outline"}
+                onClick={() => setTab("timetable")}
+                className="flex-1"
+              >
+                <CalendarRange className="h-4 w-4" /> Timetable
+              </Button>
             </div>
 
             {tab === "results" && selected && (
               <TeacherResults klass={selected.class} section={selected.section} />
             )}
+
+            {tab === "timetable" && <TeacherTimetableTab />}
 
             {tab === "attendance" && (
             <>

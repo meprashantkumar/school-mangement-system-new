@@ -10,6 +10,7 @@ import { FeeHead } from "../models/FeeHead";
 import { Subject } from "../models/Subject";
 import { Exam } from "../models/Exam";
 import { Mark } from "../models/Mark";
+import { Admission } from "../models/Admission";
 import { User } from "../models/User";
 import { logAudit, AUDIT } from "../utils/audit";
 
@@ -21,6 +22,7 @@ const MODELS: Record<TrashKind, any> = {
   FeeHead,
   Subject,
   Exam,
+  Admission,
 };
 
 // Snapshots a mongoose document into the recycle bin, then deletes it. Restoring

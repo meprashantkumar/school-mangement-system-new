@@ -14,6 +14,7 @@ import {
   teacherCreateExam,
   teacherListExams,
 } from "../controllers/exam.controller";
+import { getMyTeacherTimetable } from "../controllers/timetable.controller";
 
 const router = Router();
 
@@ -32,5 +33,8 @@ router.post("/exams", teacherCreateExam);
 router.get("/exams/:id/entry", getExamEntryTeacher);
 router.post("/marks", markOneTeacher);
 router.delete("/marks", clearMarkTeacher);
+
+// My weekly teaching timetable (derived from the class timetables)
+router.get("/timetable", getMyTeacherTimetable);
 
 export default router;

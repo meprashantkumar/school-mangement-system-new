@@ -82,6 +82,9 @@ export default function Home() {
             <a href="#contact" className="transition-colors hover:text-foreground">Contact</a>
           </nav>
           <div className="flex items-center gap-2">
+            <Button variant="outline" asChild className="hidden sm:inline-flex">
+              <Link to="/apply">Apply for Admission</Link>
+            </Button>
             {user ? (
               <Button asChild>
                 <Link to={primaryTo}>Go to app</Link>
@@ -126,7 +129,7 @@ export default function Home() {
                   </Link>
                 </Button>
                 <Button size="lg" variant="outline" asChild>
-                  <a href="#about">Explore the school</a>
+                  <Link to="/apply">Apply for Admission</Link>
                 </Button>
               </div>
 
