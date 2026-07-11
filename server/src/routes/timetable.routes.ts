@@ -5,6 +5,7 @@ import {
   updateConfig,
   getClassTimetable,
   saveClassTimetable,
+  getBusyTeachers,
   getTeacherTimetableAdmin,
   getExamTimetable,
   saveExamTimetable,
@@ -24,6 +25,7 @@ router.put("/config", staff, updateConfig);
 // Class timetable
 router.get("/class", staffOrTeacher, getClassTimetable);
 router.put("/class", staff, saveClassTimetable);
+router.get("/busy", staff, getBusyTeachers);
 
 // Teacher timetable (derived) — staff can view any teacher's
 router.get("/teacher", staff, getTeacherTimetableAdmin);

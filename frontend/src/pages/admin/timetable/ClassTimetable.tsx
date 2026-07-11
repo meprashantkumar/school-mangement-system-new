@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Save, Settings2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Settings2, Plus, Trash2, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Subject, Teacher, PeriodSlot, TimetableSlot } from "@/types";
-import { CLASSES, SECTIONS, CURRENT_SESSION, recentSessions, classLabel, WEEKDAYS } from "@/lib/constants";
+import { CLASSES, SECTIONS, CURRENT_SESSION, recentSessions, classLabel, WEEKDAYS, weekdayLong } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ export default function ClassTimetable() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [cells, setCells] = useState<Record<string, Cell>>({});
+  const [busy, setBusy] = useState<Record<string, string[]>>({}); // teachers booked elsewhere, per day_period
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -43,9 +44,11 @@ export default function ClassTimetable() {
     Promise.all([
       api.get("/subjects", { params: { class: klass } }),
       api.get("/timetable/class", { params: { class: klass, section, session } }),
+      api.get("/timetable/busy", { params: { session, excludeClass: klass, excludeSection: section } }),
     ])
-      .then(([sub, tt]) => {
+      .then(([sub, tt, bz]) => {
         setSubjects(sub.data.subjects || []);
+        setBusy(bz.data.busy || {});
         const map: Record<string, Cell> = {};
         (tt.data.timetable.slots || []).forEach((s: TimetableSlot) => {
           map[key(s.day, s.period)] = {
@@ -62,6 +65,24 @@ export default function ClassTimetable() {
   }, [klass, section, session]);
 
   const days = useMemo(() => WEEKDAYS.filter((w) => workingDays.includes(w.value)), [workingDays]);
+
+  // Copy one day's filled periods onto all the other working days (big time-saver).
+  const copyDayToAll = (sourceDay: number) => {
+    const targets = days.filter((d) => d.value !== sourceDay);
+    if (!targets.length) return;
+    if (!confirm(`Copy ${weekdayLong(sourceDay)}'s periods to the other ${targets.length} day(s)? Filled periods will overwrite them.`)) return;
+    setCells((c) => {
+      const next = { ...c };
+      for (const p of periods) {
+        const src = c[key(sourceDay, p.period)];
+        if (src && (src.subjectName || src.teacherName)) {
+          for (const d of targets) next[key(d.value, p.period)] = { ...src };
+        }
+      }
+      return next;
+    });
+    toast.success("Copied to the other days — review and Save");
+  };
 
   const setCell = (day: number, period: number, patch: Partial<Cell>) =>
     setCells((c) => {
@@ -145,7 +166,21 @@ export default function ClassTimetable() {
             <thead>
               <tr className="border-b bg-muted/40">
                 <th className="p-2 text-left font-semibold">Period</th>
-                {days.map((d) => <th key={d.value} className="p-2 text-center font-semibold">{d.short}</th>)}
+                {days.map((d) => (
+                  <th key={d.value} className="p-2 text-center font-semibold">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span>{d.short}</span>
+                      <button
+                        type="button"
+                        onClick={() => copyDayToAll(d.value)}
+                        title={`Copy ${d.long} to all other days`}
+                        className="inline-flex items-center gap-0.5 text-[10px] font-normal text-primary hover:underline"
+                      >
+                        <Copy className="h-2.5 w-2.5" /> copy
+                      </button>
+                    </div>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -154,6 +189,10 @@ export default function ClassTimetable() {
                   <td className="whitespace-nowrap p-2 align-top font-medium">{p.label}</td>
                   {days.map((d) => {
                     const c = cells[key(d.value, p.period)] || { subjectName: "", teacherName: "" };
+                    const occupied = new Set(busy[key(d.value, p.period)] || []);
+                    // Hide teachers already booked in another class this slot — but
+                    // always keep the one picked here so the current choice stays valid.
+                    const freeTeachers = teachers.filter((t) => !occupied.has(t._id) || t._id === c.teacher);
                     return (
                       <td key={d.value} className="p-1.5 align-top">
                           <select
@@ -176,7 +215,7 @@ export default function ClassTimetable() {
                             className="w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-muted-foreground"
                           >
                             <option value="">Teacher…</option>
-                            {teachers.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
+                            {freeTeachers.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
                           </select>
                         </td>
                       );

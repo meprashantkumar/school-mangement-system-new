@@ -117,6 +117,27 @@ export const saveClassTimetable = asyncHandler(async (req, res) => {
   res.json({ message: "Timetable saved", timetable, warnings });
 });
 
+// GET /api/timetable/busy?session=&excludeClass=&excludeSection=  (staff)
+// Which teachers are already booked in each day+period across every OTHER class,
+// so the editor can hide them and prevent a clash before it's created.
+export const getBusyTeachers = asyncHandler(async (req, res) => {
+  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const exClass = String(req.query.excludeClass || "").trim();
+  const exSection = String(req.query.excludeSection || "").trim();
+
+  const tts = await ClassTimetable.find({ session });
+  const busy: Record<string, string[]> = {};
+  for (const tt of tts) {
+    if (tt.class === exClass && tt.section === exSection) continue; // the one being edited
+    for (const s of tt.slots) {
+      if (!s.teacher) continue;
+      const k = `${s.day}_${s.period}`;
+      (busy[k] ||= []).push(String(s.teacher));
+    }
+  }
+  res.json({ busy });
+});
+
 // ---- Teacher timetable (derived from class timetables) ----------------------
 
 async function buildTeacherTimetable(teacherId: string, session: string) {
