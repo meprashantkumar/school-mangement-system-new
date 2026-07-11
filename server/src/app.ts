@@ -21,6 +21,7 @@ import staffRoutes from "./routes/staff.routes";
 import trashRoutes from "./routes/trash.routes";
 import subjectRoutes from "./routes/subject.routes";
 import examRoutes from "./routes/exam.routes";
+import backupRoutes from "./routes/backup.routes";
 
 export const app = express();
 
@@ -55,6 +56,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/exams", examRoutes);
+app.use("/api/backup", backupRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

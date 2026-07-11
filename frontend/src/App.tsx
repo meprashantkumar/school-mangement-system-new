@@ -20,6 +20,7 @@ import AttendanceView from "./pages/admin/AttendanceView";
 import Subjects from "./pages/admin/Subjects";
 import ExamsResults from "./pages/admin/ExamsResults";
 import RecycleBin from "./pages/admin/RecycleBin";
+import Backup from "./pages/admin/Backup";
 import Portal from "./pages/portal/Portal";
 import ReportCard from "./pages/portal/ReportCard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
@@ -92,6 +93,7 @@ export default function App() {
         <Route path="/admin/subjects" element={<Subjects />} />
         <Route path="/admin/exams" element={<ExamsResults />} />
         <Route path="/admin/recycle-bin" element={<RecycleBin />} />
+        <Route path="/admin/backup" element={<Backup />} />
         <Route path="/admin/collect" element={<Collect />} />
         <Route path="/admin/reports" element={<Reports />} />
         <Route path="/admin/analytics" element={<Analytics />} />

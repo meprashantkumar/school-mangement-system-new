@@ -33,6 +33,10 @@ export const env = {
     vpa: process.env.SCHOOL_UPI_VPA || "",
     name: process.env.SCHOOL_UPI_NAME || "School Fee Office",
   },
+  // Where the on-demand "Backup now" endpoint writes its temporary dump before
+  // streaming it to the admin. Empty → OS temp dir. (The automated daily backup
+  // is a separate cron script that also uploads off-box; see deploy/backup/.)
+  backupDir: process.env.BACKUP_DIR || "",
   email: {
     host: process.env.EMAIL_HOST || "",
     port: Number(process.env.EMAIL_PORT) || 465,

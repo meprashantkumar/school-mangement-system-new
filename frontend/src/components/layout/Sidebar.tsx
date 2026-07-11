@@ -14,6 +14,7 @@ import {
   PieChart,
   History,
   Trash2,
+  DatabaseBackup,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { to: "/admin/analytics", label: "Analytics", icon: PieChart, roles: ["superadmin", "admin"] },
   { to: "/admin/audit", label: "Audit Log", icon: History, roles: ["superadmin"] },
   { to: "/admin/recycle-bin", label: "Recycle Bin", icon: Trash2, roles: ["superadmin"] },
+  { to: "/admin/backup", label: "Backup", icon: DatabaseBackup, roles: ["superadmin"] },
 ];
 
 const initials = (name?: string) =>
