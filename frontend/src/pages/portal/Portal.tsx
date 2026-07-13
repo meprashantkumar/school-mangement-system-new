@@ -62,7 +62,10 @@ export default function Portal() {
       .catch(() => {});
   }, []);
 
-  const platformFee = config?.onlinePlatformFee ?? 20;
+  const platformFeePct = config?.onlinePlatformFeePct ?? 2.5;
+  // Convenience fee = a % of the amount paid, rounded up to the rupee — must match
+  // the server's platformFeeFor() so the amount shown is exactly what's charged.
+  const feeFor = (amount: number) => Math.ceil((amount * platformFeePct) / 100);
   const lateFeePerDay = config?.lateFeePerDay ?? 0;
   const schoolName = config?.schoolName || "School";
 
@@ -151,8 +154,8 @@ export default function Portal() {
               <li>
                 <span className="font-medium text-foreground">Pay online</span> using UPI, card, net
                 banking or wallet — a convenience fee of{" "}
-                <span className="font-medium text-foreground">{formatINR(platformFee)}</span> applies
-                per online payment.
+                <span className="font-medium text-foreground">{platformFeePct}%</span> applies
+                per online payment (it covers the payment-gateway charge).
               </li>
               <li>
                 To <span className="font-medium text-foreground">avoid the convenience fee</span>, pay
@@ -258,7 +261,8 @@ export default function Portal() {
                               : `Pay ${formatINR(inv.dueAmount)} online`}
                           </Button>
                           <p className="text-xs text-muted-foreground">
-                            + {formatINR(platformFee)} convenience fee. Pay at the counter to avoid it.
+                            + {formatINR(feeFor(inv.dueAmount))} convenience fee ({platformFeePct}%). Pay at the
+                            counter to avoid it.
                           </p>
                         </div>
                       ) : (

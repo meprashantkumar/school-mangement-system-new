@@ -10,7 +10,7 @@ router.get("/", (_req, res) => {
     razorpayKeyId: env.razorpay.keyId,
     upiVpa: env.upi.vpa,
     upiName: env.upi.name,
-    onlinePlatformFee: env.onlinePlatformFee,
+    onlinePlatformFeePct: env.onlinePlatformFeePct,
     lateFeePerDay: env.lateFee.perDay,
     lateFeeMax: env.lateFee.max,
   });

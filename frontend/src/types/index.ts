@@ -354,7 +354,7 @@ export interface AppConfig {
   razorpayKeyId: string;
   upiVpa: string;
   upiName: string;
-  onlinePlatformFee: number;
+  onlinePlatformFeePct: number;
   lateFeePerDay?: number;
   lateFeeMax?: number;
 }

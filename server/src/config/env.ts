@@ -20,8 +20,11 @@ export const env = {
   },
   // School name shown on receipts / emails.
   schoolName: process.env.SCHOOL_NAME || "Your School",
-  // Convenience fee added to online (Razorpay) payments made from home.
-  onlinePlatformFee: Number(process.env.ONLINE_PLATFORM_FEE) || 20,
+  // Convenience fee added to online (Razorpay) payments made from home, as a
+  // PERCENTAGE of the amount being paid. Razorpay charges 2% + 18% GST = 2.36%
+  // of the total; a 2.5% surcharge (rounded up to the rupee) covers that on every
+  // payment regardless of size, so the school never absorbs the gateway cut.
+  onlinePlatformFeePct: Number(process.env.ONLINE_PLATFORM_FEE_PCT) || 2.5,
   // Auto late fee: charged per day past an invoice's due date (0 disables the
   // feature). `max` caps the total late fee per invoice (0 = no cap).
   lateFee: {

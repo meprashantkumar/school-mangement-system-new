@@ -118,6 +118,14 @@ export const recordCounterPayment = asyncHandler(async (req, res) => {
   res.status(201).json({ message: "Payment recorded", payment, invoice });
 });
 
+// The convenience fee for an online payment: a percentage of the amount being
+// paid, rounded UP to the whole rupee. Razorpay keeps 2% + 18% GST = 2.36% of
+// the total charged, so the default 2.5% (see env.onlinePlatformFeePct) covers
+// the gateway's cut on every payment — the school never runs at a loss.
+export function platformFeeFor(amount: number): number {
+  return Math.ceil((amount * env.onlinePlatformFeePct) / 100);
+}
+
 // POST /api/payments/razorpay/order  { invoiceId, amount }
 export const createRazorpayOrder = asyncHandler(async (req, res) => {
   if (!razorpay) throw new ApiError(400, "Online payments are not configured");
@@ -130,11 +138,15 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   if (!amt || amt <= 0 || amt > invoice.dueAmount) throw new ApiError(400, "Invalid amount");
 
   // Online payments from home carry a platform/convenience fee on top of the fee amount.
-  const platformFee = env.onlinePlatformFee;
+  const platformFee = platformFeeFor(amt);
   const order = await razorpay.orders.create({
     amount: Math.round((amt + platformFee) * 100), // paise, incl. platform fee
     currency: "INR",
     receipt: `inv_${invoice.id}`,
+    // Stamp the fee split onto the order itself. Verification reads the fee back
+    // from HERE (Razorpay-held, server-set) instead of re-deriving it, so the
+    // amount credited can never be tampered with by the client.
+    notes: { platformFee: String(platformFee), feeAmount: String(amt) },
   });
 
   res.json({ order, keyId: env.razorpay.keyId, platformFee });
@@ -191,8 +203,9 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
   await assertCanAccess(req.user!, invoice);
 
   // 4) Credit ONLY what was actually captured, minus the platform fee, capped at
-  // the invoice's outstanding due.
-  const platformFee = env.onlinePlatformFee;
+  // the invoice's outstanding due. The fee comes from the order's own notes
+  // (set by us at order creation, held by Razorpay), so it can't be spoofed.
+  const platformFee = Math.round(Number(order?.notes?.platformFee) || 0);
   const capturedRupees = Math.round(Number(captured.amount) / 100);
   const feeCredit = Math.max(0, Math.min(capturedRupees - platformFee, invoice.dueAmount));
   if (feeCredit <= 0) throw new ApiError(400, "Captured amount does not cover any dues");
