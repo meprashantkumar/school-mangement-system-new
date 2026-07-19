@@ -198,11 +198,112 @@ export const getAnalytics = asyncHandler(async (req, res) => {
     (c) => c.count > 0
   );
 
+  // ---- Collections: billed vs collected vs outstanding for the session (+class) ----
+  // Invoices carry academicYear in the same "2026-27" form as the session.
+  const invMatch: Record<string, unknown> = { academicYear: session, ...classMatch };
+  const [totals] = await Invoice.aggregate([
+    { $match: invMatch },
+    {
+      $group: {
+        _id: null,
+        billed: { $sum: "$netAmount" },
+        collected: { $sum: "$paidAmount" },
+        outstanding: { $sum: "$dueAmount" },
+        concessions: { $sum: "$discountAmount" },
+      },
+    },
+  ]);
+  const billed = totals?.billed || 0;
+  const collected = totals?.collected || 0;
+  const outstanding = totals?.outstanding || 0;
+  const concessions = totals?.concessions || 0;
+  const collectionRate = billed > 0 ? Math.round((collected / billed) * 100) : 0;
+
+  // Defaulters: how many students owe anything, and the oldest overdue invoice.
+  const defStudents = await Invoice.distinct("student", { ...invMatch, dueAmount: { $gt: 0 } });
+  const oldestOverdue = await Invoice.findOne({
+    ...invMatch,
+    dueAmount: { $gt: 0 },
+    dueDate: { $lt: new Date() },
+  })
+    .sort({ dueDate: 1 })
+    .select("dueDate");
+
+  // Class-wise outstanding, ordered by the class ladder.
+  const classOutAgg = await Invoice.aggregate([
+    { $match: { academicYear: session, ...classMatch, dueAmount: { $gt: 0 } } },
+    { $group: { _id: "$class", outstanding: { $sum: "$dueAmount" } } },
+  ]);
+  const classOutMap = new Map<string, number>();
+  classOutAgg.forEach((c) => classOutMap.set(c._id, c.outstanding));
+  const classOutstanding = CLASSES.map((c) => ({
+    class: c,
+    outstanding: classOutMap.get(c) || 0,
+  })).filter((c) => c.outstanding > 0);
+
+  // Payment-mode split over the same Apr–Mar window (non-voided), + the online
+  // convenience fee earned. Class filter matches the student's current class,
+  // consistent with the monthly-collection chart above.
+  const modePipeline: any[] = [
+    { $match: { voided: { $ne: true }, createdAt: { $gte: windowStart, $lte: windowEnd } } },
+  ];
+  if (className) {
+    modePipeline.push(
+      { $lookup: { from: "students", localField: "student", foreignField: "_id", as: "stu" } },
+      { $unwind: "$stu" },
+      { $match: { "stu.class": className } }
+    );
+  }
+  modePipeline.push({
+    $group: {
+      _id: "$mode",
+      amount: { $sum: "$amount" },
+      count: { $sum: 1 },
+      fee: { $sum: "$platformCharge" },
+    },
+  });
+  const modeRows = await Payment.aggregate(modePipeline);
+  const byMode = { cash: 0, cheque: 0, upi: 0, online: 0 } as Record<string, number>;
+  let convenienceFee = 0;
+  let onlineCount = 0;
+  let onlineAmount = 0;
+  let counterCount = 0;
+  let counterAmount = 0;
+  modeRows.forEach((r) => {
+    byMode[r._id] = r.amount;
+    if (r._id === "online") {
+      onlineAmount = r.amount;
+      onlineCount = r.count;
+      convenienceFee += r.fee || 0;
+    } else {
+      counterAmount += r.amount;
+      counterCount += r.count;
+    }
+  });
+
+  const collections = {
+    billed,
+    collected,
+    outstanding,
+    concessions,
+    collectionRate,
+    byMode,
+    online: { count: onlineCount, amount: onlineAmount, convenienceFee },
+    counter: { count: counterCount, amount: counterAmount },
+    defaulters: {
+      students: defStudents.length,
+      amount: outstanding,
+      oldestDueDate: oldestOverdue?.dueDate || null,
+    },
+    classOutstanding,
+  };
+
   res.json({
     session,
     monthlyCollection,
     stats: { totalActive, newAdmissions, leftSchool, promoted, retained, graduated },
     classDistribution,
+    collections,
   });
 });
 
