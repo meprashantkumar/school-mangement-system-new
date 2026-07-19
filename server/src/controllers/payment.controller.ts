@@ -107,7 +107,9 @@ export const recordCounterPayment = asyncHandler(async (req, res) => {
   await invoice.save();
 
   const student = await Student.findById(invoice.student);
-  sendPaymentConfirmation(payment, invoice, student);
+  // Counter payments (cash/cheque/UPI-QR) are made in person and handed a printed
+  // receipt on the spot, so no confirmation email is sent. Only online payments
+  // made from home email the parent (see verifyRazorpayPayment).
   logAudit(
     req,
     AUDIT.PAYMENT,
