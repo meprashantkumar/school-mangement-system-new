@@ -36,6 +36,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["superadmin", "admin"] },
   { to: "/admin/students", label: "Students", icon: GraduationCap, roles: ["superadmin"] },
+  { to: "/admin/collect", label: "Collect Fee", icon: Wallet, roles: ["superadmin", "admin"] },
   { to: "/admin/admissions", label: "Admissions", icon: Inbox, roles: ["superadmin", "admin"] },
   { to: "/admin/teachers", label: "Teachers", icon: Contact, roles: ["superadmin"] },
   { to: "/admin/staff", label: "Staff", icon: Users, roles: ["superadmin"] },
@@ -45,7 +46,6 @@ const navItems: NavItem[] = [
   { to: "/admin/timetable", label: "Timetable", icon: CalendarRange, roles: ["superadmin", "admin"] },
   { to: "/admin/fees", label: "Fee Setup", icon: FileText, roles: ["superadmin"] },
   { to: "/admin/fee-generation", label: "Fee Generation", icon: CalendarPlus, roles: ["superadmin"] },
-  { to: "/admin/collect", label: "Collect Fee", icon: Wallet, roles: ["superadmin", "admin"] },
   { to: "/admin/reports", label: "Reports", icon: BarChart3, roles: ["superadmin", "admin"] },
   { to: "/admin/analytics", label: "Analytics", icon: PieChart, roles: ["superadmin", "admin"] },
   { to: "/admin/audit", label: "Audit Log", icon: History, roles: ["superadmin"] },

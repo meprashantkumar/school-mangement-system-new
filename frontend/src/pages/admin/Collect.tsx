@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, Wallet, Percent, AlertTriangle, Printer, X } from "lucide-react";
+import { Search, Wallet, Percent, AlertTriangle, Printer, X, ArrowLeft } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
@@ -78,6 +78,13 @@ export default function Collect() {
     if (!selected) return;
     const { data } = await api.get(`/invoices/student/${selected._id}`);
     setInvoices(data.invoices);
+  };
+
+  // Go back to the search list without having to retype the filters.
+  const backToSearch = () => {
+    setSelected(null);
+    setInvoices([]);
+    runSearch(); // restore the results for the filters still in the search box
   };
 
   const recordPayment = async (e: React.FormEvent) => {
@@ -241,6 +248,9 @@ export default function Collect() {
 
       {selected && (
         <div className="space-y-4">
+          <Button variant="ghost" size="sm" className="-ml-2" onClick={backToSearch}>
+            <ArrowLeft className="h-4 w-4" /> Back to search
+          </Button>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">
