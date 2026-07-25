@@ -6,6 +6,7 @@ import Apply from "./pages/Admissions";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Receipt from "./pages/Receipt";
+import BonafideCertificate from "./pages/BonafideCertificate";
 import Dashboard from "./pages/admin/Dashboard";
 import Students from "./pages/admin/Students";
 import StudentDetails from "./pages/admin/StudentDetails";
@@ -49,6 +50,16 @@ export default function App() {
         element={
           <ProtectedRoute roles={["superadmin", "admin", "parent", "student"]}>
             <Receipt />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Printable bonafide certificate (staff only) */}
+      <Route
+        path="/certificate/bonafide/:id"
+        element={
+          <ProtectedRoute roles={["superadmin", "admin"]}>
+            <BonafideCertificate />
           </ProtectedRoute>
         }
       />

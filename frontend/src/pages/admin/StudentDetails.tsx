@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, User, Users, Receipt, History, IndianRupee } from "lucide-react";
+import { ArrowLeft, User, Users, Receipt, History, IndianRupee, ScrollText } from "lucide-react";
 import api from "@/lib/api";
 import type { Invoice, Payment, Student } from "@/types";
 import { formatINR } from "@/lib/utils";
 import { classLabel } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -77,14 +78,23 @@ export default function StudentDetails() {
             {student.section ? `-${student.section}` : ""} · Session {student.session || "—"}
           </p>
         </div>
-        <div className="flex gap-6">
-          <div className="text-right">
-            <p className="text-xs uppercase text-muted-foreground">Total due</p>
-            <p className="text-xl font-bold text-rose-600">{formatINR(totalDue)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs uppercase text-muted-foreground">Total paid</p>
-            <p className="text-xl font-bold text-emerald-600">{formatINR(totalPaid)}</p>
+        <div className="flex flex-col items-end gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`/certificate/bonafide/${id}`, "_blank")}
+          >
+            <ScrollText className="h-4 w-4" /> Bonafide Certificate
+          </Button>
+          <div className="flex gap-6">
+            <div className="text-right">
+              <p className="text-xs uppercase text-muted-foreground">Total due</p>
+              <p className="text-xl font-bold text-rose-600">{formatINR(totalDue)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs uppercase text-muted-foreground">Total paid</p>
+              <p className="text-xl font-bold text-emerald-600">{formatINR(totalPaid)}</p>
+            </div>
           </div>
         </div>
       </div>

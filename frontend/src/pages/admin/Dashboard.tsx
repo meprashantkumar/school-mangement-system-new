@@ -8,6 +8,9 @@ import {
   FileText,
   HandCoins,
   Contact,
+  CalendarPlus,
+  ClipboardCheck,
+  CalendarRange,
 } from "lucide-react";
 import api from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
@@ -27,6 +30,9 @@ const quickActions = [
   { to: "/admin/students", label: "Add / manage students", icon: UserPlus },
   { to: "/admin/fees", label: "Set up fee structures", icon: FileText },
   { to: "/admin/collect", label: "Collect a fee payment", icon: HandCoins },
+  { to: "/admin/fee-generation", label: "Generate fee invoices", icon: CalendarPlus },
+  { to: "/admin/attendance", label: "Mark attendance", icon: ClipboardCheck },
+  { to: "/admin/timetable", label: "Manage timetable", icon: CalendarRange },
 ];
 
 export default function Dashboard() {
