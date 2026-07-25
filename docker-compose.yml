@@ -1,0 +1,82 @@
+# =============================================================================
+# Full stack for ONE school: MongoDB + API + Web (Nginx).
+#
+# Run a school with its own config, project name, and host port:
+#
+#   docker compose --env-file school1.env -p sfms_school1 up -d --build
+#   docker compose --env-file school2.env -p sfms_school2 up -d --build
+#
+# The -p project name namespaces the containers AND the data volume, so each
+# school gets its own isolated database. See DOCKER.md for the full runbook.
+# =============================================================================
+
+name: sfms
+
+services:
+  mongo:
+    image: mongo:7.0                       # pin to a digest for full reproducibility
+    restart: unless-stopped
+    # Cap the WiredTiger cache so several schools can share one box without one
+    # Mongo eating all the RAM. ~1 GB is plenty for a single school.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "${MONGO_CACHE_GB:-1}"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+    volumes:
+      - mongo_data:/data/db                # <-- the database lives here; back THIS up
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Not published to the host — only the api container talks to it.
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      MONGO_URI: mongodb://${MONGO_USER}:${MONGO_PASS}@mongo:27017/${DB_NAME:-sfms}?authSource=admin
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE: ${JWT_EXPIRE:-7d}
+      CLIENT_URL: ${CLIENT_URL}
+      SCHOOL_NAME: ${SCHOOL_NAME}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME:-Super Admin}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      ONLINE_PLATFORM_FEE_PCT: ${ONLINE_PLATFORM_FEE_PCT:-2.5}
+      LATE_FEE_PER_DAY: ${LATE_FEE_PER_DAY:-0}
+      LATE_FEE_MAX: ${LATE_FEE_MAX:-0}
+      SCHOOL_UPI_VPA: ${SCHOOL_UPI_VPA:-}
+      SCHOOL_UPI_NAME: ${SCHOOL_UPI_NAME:-School Fee Office}
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-gdrive:sfms-backups}
+      RCLONE_CONFIG: /root/.config/rclone/rclone.conf
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    volumes:
+      # Optional: rclone config for the in-app "Back up to Google Drive" button.
+      # Put your rclone.conf at ./rclone/rclone.conf on the host (safe to skip).
+      - ./rclone:/root/.config/rclone
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      # Host port -> container Nginx. Put a host reverse proxy (Nginx + Certbot)
+      # in front for the domain + HTTPS. Use a different WEB_PORT per school.
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  mongo_data:
