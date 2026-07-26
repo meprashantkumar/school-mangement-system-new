@@ -346,6 +346,18 @@ export const importStudents = asyncHandler(async (req, res) => {
         ? row.optedServices.split(/[;,]/).map((s: string) => s.trim()).filter(Boolean)
         : [];
 
+      // Optional per-student fee overrides for opted services (e.g. a longer bus
+      // route). Only kept for services the student actually opted into; the
+      // model's pre-save hook prunes any stragglers too.
+      const serviceFees = Array.isArray(row.serviceFees)
+        ? row.serviceFees
+            .map((f: any) => ({ name: String(f?.name || "").trim(), amount: Number(f?.amount) }))
+            .filter(
+              (f: any) =>
+                f.name && Number.isFinite(f.amount) && f.amount >= 0 && opted.includes(f.name)
+            )
+        : [];
+
       let doa: Date | undefined = row.dateOfAdmission ? new Date(row.dateOfAdmission) : undefined;
       if (doa && Number.isNaN(doa.getTime())) doa = undefined;
 
@@ -363,6 +375,7 @@ export const importStudents = asyncHandler(async (req, res) => {
         parentPhone: row.parentPhone != null ? String(row.parentPhone) : undefined,
         parentEmail: row.parentEmail || undefined,
         optedServices: opted,
+        serviceFees,
         status: statuses.includes(row.status) ? row.status : "active",
       });
       inserted += 1;

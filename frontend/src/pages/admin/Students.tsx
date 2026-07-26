@@ -12,6 +12,7 @@ import {
   Eye,
   Download,
   Upload,
+  Users,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { CLASSES, SECTIONS, classLabel, CURRENT_SESSION } from "@/lib/constants"
 import { formatINR } from "@/lib/utils";
 import { toCSV, parseCSV, downloadFile } from "@/lib/csv";
 import PromoteStudentsDialog from "@/components/PromoteStudentsDialog";
+import BulkAddStudents from "@/components/BulkAddStudents";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,6 +96,7 @@ export default function Students() {
   const [meta, setMeta] = useState({ total: 0, pages: 1, limit: 50 });
   const [reloadKey, setReloadKey] = useState(0);
   const [open, setOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [optedServices, setOptedServices] = useState<string[]>([]);
@@ -425,6 +428,10 @@ export default function Students() {
             <ArrowUpCircle className="h-4 w-4" />
             Promote Class
           </Button>
+          <Button variant="outline" onClick={() => setBulkOpen(true)}>
+            <Users className="h-4 w-4" />
+            Bulk add
+          </Button>
           <Button onClick={openAdd}>
             <Plus className="h-4 w-4" />
             Add Student
@@ -683,7 +690,11 @@ export default function Students() {
 
       {/* Add / edit student */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl">
+        <DialogContent
+          className="max-h-[90vh] max-w-2xl"
+          // A stray backdrop click shouldn't wipe a half-filled form.
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit Student" : "Add Student"}</DialogTitle>
           </DialogHeader>
@@ -840,6 +851,19 @@ export default function Students() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk add students */}
+      <BulkAddStudents
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        optionalHeads={optionalHeads}
+        structures={structures}
+        sessions={sessions}
+        onDone={() => {
+          fetchStudents();
+          loadSessions();
+        }}
+      />
 
       {/* Mark as left */}
       <Dialog open={!!leaveFor} onOpenChange={(o) => !o && setLeaveFor(null)}>
