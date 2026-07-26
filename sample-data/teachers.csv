@@ -1,0 +1,8 @@
+name,email,phone,gender,designation,employeeCode,class,section
+Ramesh Kumar,ramesh.kumar@rkpublic.example.com,9800000001,Male,English Teacher,EMP001,1,A
+Sunita Sharma,sunita.sharma@rkpublic.example.com,9800000002,Female,Hindi Teacher,EMP002,2,A
+Anil Verma,anil.verma@rkpublic.example.com,9800000003,Male,Mathematics Teacher,EMP003,3,A
+Pooja Singh,pooja.singh@rkpublic.example.com,9800000004,Female,EVS Teacher,EMP004,4,A
+Kavita Yadav,kavita.yadav@rkpublic.example.com,9800000005,Female,Computer Teacher,EMP005,5,A
+Manoj Gupta,manoj.gupta@rkpublic.example.com,9800000006,Male,Drawing Teacher,EMP006,,
+Deepak Mishra,deepak.mishra@rkpublic.example.com,9800000007,Male,Physical Education Teacher,EMP007,,
