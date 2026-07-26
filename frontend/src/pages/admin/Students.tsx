@@ -683,11 +683,14 @@ export default function Students() {
 
       {/* Add / edit student */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit Student" : "Add Student"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={save} className="grid grid-cols-2 gap-4">
+          <form
+            onSubmit={save}
+            className="grid max-h-[75vh] grid-cols-2 gap-4 overflow-y-auto pr-1"
+          >
             <div className="space-y-1.5">
               <Label>Admission No</Label>
               <Input
@@ -829,7 +832,7 @@ export default function Students() {
               </div>
             )}
 
-            <DialogFooter className="col-span-2">
+            <DialogFooter className="sticky bottom-0 col-span-2 -mx-1 border-t bg-background px-1 pt-3">
               <Button type="submit" disabled={saving}>
                 {saving ? "Saving..." : editingId ? "Update" : "Add"}
               </Button>
