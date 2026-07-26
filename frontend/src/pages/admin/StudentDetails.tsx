@@ -125,7 +125,16 @@ export default function StudentDetails() {
             <Field label="Session" value={student.session} />
             <Field
               label="Optional services"
-              value={student.optedServices?.length ? student.optedServices.join(", ") : "None"}
+              value={
+                student.optedServices?.length
+                  ? student.optedServices
+                      .map((name) => {
+                        const ov = student.serviceFees?.find((f) => f.name === name);
+                        return ov ? `${name} (₹${ov.amount})` : name;
+                      })
+                      .join(", ")
+                  : "None"
+              }
             />
           </CardContent>
         </Card>

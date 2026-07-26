@@ -140,6 +140,7 @@ export interface Student {
   parentPhone?: string;
   parentEmail?: string;
   optedServices?: string[];
+  serviceFees?: { name: string; amount: number }[];
   enrollmentHistory?: Enrollment[];
   status: "active" | "left" | "inactive";
   exitDate?: string;

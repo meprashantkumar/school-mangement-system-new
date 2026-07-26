@@ -44,10 +44,15 @@ async function generateForStructure(
     }
 
     // Mandatory items for all; optional items only if the student opted in.
+    // A per-student override (e.g. a custom Transport fee) wins over the class amount.
     const opted = student.optedServices || [];
+    const overrides = new Map((student.serviceFees || []).map((f) => [f.name, f.amount]));
     const items = structure.items
       .filter((i) => !i.optional || opted.includes(i.name))
-      .map((i) => ({ name: i.name, amount: i.amount }));
+      .map((i) => ({
+        name: i.name,
+        amount: i.optional && overrides.has(i.name) ? Number(overrides.get(i.name)) : i.amount,
+      }));
 
     if (items.length === 0) {
       skipped += 1;

@@ -9,6 +9,14 @@ export interface IEnrollment {
   section?: string;
 }
 
+// Per-student override for an optional service's amount (e.g. a longer bus route
+// costs this student more than the class's base Transport fee). When absent for an
+// opted service, invoice generation falls back to the class fee-structure amount.
+export interface IServiceFee {
+  name: string;
+  amount: number;
+}
+
 export interface IStudent extends Document {
   admissionNo: string;
   name: string;
@@ -24,6 +32,7 @@ export interface IStudent extends Document {
   parentEmail?: string;
   parent?: Types.ObjectId; // linked parent login (User), optional
   optedServices: string[]; // optional fee heads this student uses, e.g. ["Transport"]
+  serviceFees: IServiceFee[]; // per-student amount overrides for opted services
   enrollmentHistory: IEnrollment[]; // prior (session, class, section) snapshots
   status: "active" | "left" | "inactive";
   exitDate?: Date; // when the student left school (optional)
@@ -37,6 +46,14 @@ const enrollmentSchema = new Schema<IEnrollment>(
     session: { type: String, required: true },
     class: { type: String, required: true },
     section: { type: String },
+  },
+  { _id: false }
+);
+
+const serviceFeeSchema = new Schema<IServiceFee>(
+  {
+    name: { type: String, required: true },
+    amount: { type: Number, required: true, min: 0 },
   },
   { _id: false }
 );
@@ -57,6 +74,7 @@ const studentSchema = new Schema<IStudent>(
     parentEmail: { type: String, trim: true, lowercase: true },
     parent: { type: Schema.Types.ObjectId, ref: "User" },
     optedServices: { type: [String], default: [] },
+    serviceFees: { type: [serviceFeeSchema], default: [] },
     enrollmentHistory: { type: [enrollmentSchema], default: [] },
     status: { type: String, enum: ["active", "left", "inactive"], default: "active" },
     exitDate: { type: Date },
@@ -64,5 +82,15 @@ const studentSchema = new Schema<IStudent>(
   },
   { timestamps: true }
 );
+
+// Keep overrides tidy: only retain amounts for services the student still uses,
+// so a dropped service can't leave a stale custom fee behind.
+studentSchema.pre("save", function (next) {
+  if (this.serviceFees?.length) {
+    const opted = new Set(this.optedServices || []);
+    this.serviceFees = this.serviceFees.filter((f) => opted.has(f.name));
+  }
+  next();
+});
 
 export const Student = mongoose.model<IStudent>("Student", studentSchema);

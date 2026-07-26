@@ -17,8 +17,9 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import type { FeeHead, Student } from "@/types";
-import { CLASSES, SECTIONS, classLabel } from "@/lib/constants";
+import type { FeeHead, FeeStructure, Student } from "@/types";
+import { CLASSES, SECTIONS, classLabel, CURRENT_SESSION } from "@/lib/constants";
+import { formatINR } from "@/lib/utils";
 import { toCSV, parseCSV, downloadFile } from "@/lib/csv";
 import PromoteStudentsDialog from "@/components/PromoteStudentsDialog";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,9 @@ export default function Students() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [optedServices, setOptedServices] = useState<string[]>([]);
+  // Per-service amount override for the student being edited (head name -> amount string).
+  const [serviceFeeInputs, setServiceFeeInputs] = useState<Record<string, string>>({});
+  const [structures, setStructures] = useState<FeeStructure[]>([]);
   const [saving, setSaving] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [leaveFor, setLeaveFor] = useState<Student | null>(null);
@@ -149,8 +153,22 @@ export default function Students() {
         if (opts[0]) setBulkService(opts[0].name);
       })
       .catch(() => {});
+    // Fee structures let us show each class's base amount for an optional service.
+    api
+      .get("/fees/structures")
+      .then(({ data }) => setStructures(data.structures || []))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The class's base amount for an optional service (from its fee structure), or null.
+  const baseFeeFor = (className: string, headName: string): number | null => {
+    const forClass = structures.filter((s) => s.class === className);
+    const s =
+      forClass.find((x) => x.academicYear === CURRENT_SESSION) || forClass[0];
+    const item = s?.items.find((i) => i.name === headName);
+    return item ? item.amount : null;
+  };
 
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => {
@@ -194,6 +212,7 @@ export default function Students() {
     setEditingId(null);
     setForm({ ...emptyForm, dateOfAdmission: today() });
     setOptedServices([]);
+    setServiceFeeInputs({});
     setOpen(true);
   };
 
@@ -213,6 +232,15 @@ export default function Students() {
       parentEmail: s.parentEmail || "",
     });
     setOptedServices(s.optedServices || []);
+    // Show each opted service's effective amount: the student's override if set,
+    // otherwise the class's base fee (so the field is prefilled and editable).
+    const overrides = new Map((s.serviceFees || []).map((f) => [f.name, f.amount]));
+    const inputs: Record<string, string> = {};
+    for (const name of s.optedServices || []) {
+      const amt = overrides.has(name) ? overrides.get(name)! : baseFeeFor(s.class, name);
+      inputs[name] = amt != null ? String(amt) : "";
+    }
+    setServiceFeeInputs(inputs);
     setOpen(true);
   };
 
@@ -220,14 +248,39 @@ export default function Students() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const toggleService = (name: string) =>
-    setOptedServices((list) =>
-      list.includes(name) ? list.filter((s) => s !== name) : [...list, name]
-    );
+    setOptedServices((list) => {
+      if (list.includes(name)) return list.filter((s) => s !== name);
+      // Turning a service on: prefill its amount with the class's base fee.
+      const base = baseFeeFor(form.class, name);
+      setServiceFeeInputs((m) => ({ ...m, [name]: base != null ? String(base) : "" }));
+      return [...list, name];
+    });
+
+  const setServiceFee = (name: string, val: string) =>
+    setServiceFeeInputs((m) => ({ ...m, [name]: val }));
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const payload = { ...form, optedServices, dateOfAdmission: form.dateOfAdmission || undefined };
+    // Only store an override when the amount differs from the class base — an
+    // unedited service keeps following the class fee structure automatically.
+    const serviceFees = optedServices
+      .map((name) => {
+        const raw = serviceFeeInputs[name];
+        if (raw === undefined || raw === "") return null;
+        const amount = Number(raw);
+        if (!Number.isFinite(amount) || amount < 0) return null;
+        const base = baseFeeFor(form.class, name);
+        if (base != null && amount === base) return null;
+        return { name, amount };
+      })
+      .filter((x): x is { name: string; amount: number } => x !== null);
+    const payload = {
+      ...form,
+      optedServices,
+      serviceFees,
+      dateOfAdmission: form.dateOfAdmission || undefined,
+    };
     try {
       if (editingId) {
         await api.put(`/students/${editingId}`, payload);
@@ -730,23 +783,48 @@ export default function Students() {
             {optionalHeads.length > 0 && (
               <div className="col-span-2 space-y-2">
                 <Label>Optional services used</Label>
-                <div className="flex flex-wrap gap-3">
-                  {optionalHeads.map((h) => (
-                    <label
-                      key={h._id}
-                      className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={optedServices.includes(h.name)}
-                        onChange={() => toggleService(h.name)}
-                      />
-                      {h.name}
-                    </label>
-                  ))}
+                <div className="space-y-2">
+                  {optionalHeads.map((h) => {
+                    const on = optedServices.includes(h.name);
+                    const base = baseFeeFor(form.class, h.name);
+                    return (
+                      <div
+                        key={h._id}
+                        className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-sm"
+                      >
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => toggleService(h.name)}
+                          />
+                          {h.name}
+                        </label>
+                        {on && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">Fee/mo:</span>
+                            <Input
+                              type="number"
+                              className="h-8 w-28"
+                              placeholder={base != null ? String(base) : "amount"}
+                              value={serviceFeeInputs[h.name] ?? ""}
+                              onChange={(e) => setServiceFee(h.name, e.target.value)}
+                            />
+                            {base != null && (
+                              <span className="text-xs text-muted-foreground">
+                                base {formatINR(base)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Only checked services (e.g. Transport) will be added to this student's fee.
+                  Checked services are added to this student's fee. The amount defaults to the
+                  class's base fee — edit it for this student (e.g. a longer bus route). Leave it at
+                  the base to keep following the class fee.
                 </p>
               </div>
             )}

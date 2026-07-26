@@ -108,6 +108,7 @@ export const updateStudent = asyncHandler(async (req, res) => {
     "parentPhone",
     "parentEmail",
     "optedServices",
+    "serviceFees",
     "status",
   ] as const;
 
@@ -393,7 +394,7 @@ export const bulkUpdateServices = asyncHandler(async (req, res) => {
 
   const remove = action === "remove";
   const update = remove
-    ? { $pull: { optedServices: service } }
+    ? { $pull: { optedServices: service, serviceFees: { name: service } } }
     : { $addToSet: { optedServices: service } };
 
   const result = await Student.updateMany({ _id: { $in: ids } }, update);
