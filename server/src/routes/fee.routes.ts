@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { protect, authorize } from "../middleware/auth";
 import {
+  bulkUpsertFeeStructures,
   createFeeHead,
   createFeeStructure,
   deleteFeeHead,
@@ -24,6 +25,7 @@ router.delete("/heads/:id", protect, authorize("superadmin"), deleteFeeHead);
 router.get("/structures", protect, authorize("superadmin", "admin"), getFeeStructures);
 router.get("/structures/:id", protect, authorize("superadmin", "admin"), getFeeStructure);
 router.post("/structures", protect, authorize("superadmin"), createFeeStructure);
+router.post("/structures/bulk", protect, authorize("superadmin"), bulkUpsertFeeStructures);
 router.put("/structures/:id", protect, authorize("superadmin"), updateFeeStructure);
 router.delete("/structures/:id", protect, authorize("superadmin"), deleteFeeStructure);
 

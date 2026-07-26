@@ -2,7 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { logAudit, AUDIT } from "../utils/audit";
 import { FeeHead } from "../models/FeeHead";
-import { FeeStructure } from "../models/FeeStructure";
+import { FeeStructure, StructureItem } from "../models/FeeStructure";
 import { moveToTrash } from "./trash.controller";
 
 /* ---------------- Fee Heads ---------------- */
@@ -77,6 +77,62 @@ export const updateFeeStructure = asyncHandler(async (req, res) => {
   await structure.save();
   logAudit(req, AUDIT.FEE_SETUP, `Updated fee structure "${structure.name}" (Class ${structure.class})`);
   res.json({ message: "Fee structure updated", structure });
+});
+
+// Create/update many class structures for one academic year in a single request.
+// Upsert keyed on class + academicYear: existing classes are updated (name kept),
+// missing ones are created with an auto-name. Classes not sent are left untouched
+// (unticking in the UI just skips a class — it never deletes an existing structure).
+export const bulkUpsertFeeStructures = asyncHandler(async (req, res) => {
+  const { academicYear, rows } = req.body as {
+    academicYear?: string;
+    rows?: { class?: string; name?: string; items?: StructureItem[] }[];
+  };
+  if (!academicYear) throw new ApiError(400, "Academic year is required");
+  if (!Array.isArray(rows) || rows.length === 0) throw new ApiError(400, "No classes to save");
+
+  let created = 0;
+  let updated = 0;
+  const touched: string[] = [];
+
+  for (const row of rows) {
+    const className = String(row.class || "").trim();
+    if (!className) continue;
+
+    const items = (row.items || [])
+      .filter((i) => i && i.name && String(i.name).trim() && Number(i.amount) > 0)
+      .map((i) => ({ name: i.name, amount: Number(i.amount), optional: !!i.optional }));
+    if (items.length === 0) continue; // don't create empty structures
+
+    let structure = await FeeStructure.findOne({ class: className, academicYear });
+    if (structure) {
+      structure.items = items as StructureItem[];
+      if (row.name) structure.name = row.name;
+      await structure.save();
+      updated++;
+    } else {
+      const label = /^\d/.test(className) ? `Class ${className}` : className;
+      await FeeStructure.create({
+        name: row.name || `${label} Fees ${academicYear}`,
+        class: className,
+        academicYear,
+        items,
+      });
+      created++;
+    }
+    touched.push(className);
+  }
+
+  logAudit(
+    req,
+    AUDIT.FEE_SETUP,
+    `Bulk fee setup (${academicYear}): ${created} created, ${updated} updated — ${touched.join(", ") || "none"}`
+  );
+  res.json({
+    message: `Saved ${created + updated} class structure(s) (${created} new, ${updated} updated)`,
+    created,
+    updated,
+  });
 });
 
 export const deleteFeeStructure = asyncHandler(async (req, res) => {

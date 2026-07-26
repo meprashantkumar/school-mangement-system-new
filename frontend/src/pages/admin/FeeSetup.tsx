@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, FileText, Layers, Pencil } from "lucide-react";
+import { Plus, Trash2, FileText, Layers, Pencil, Grid3x3 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { FeeHead, FeeStructure } from "@/types";
+import BulkFeeSetup from "./BulkFeeSetup";
 import { CLASSES, classLabel } from "@/lib/constants";
 import { formatINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export default function FeeSetup() {
   const [structures, setStructures] = useState<FeeStructure[]>([]);
   const [headForm, setHeadForm] = useState({ name: "", optional: false });
   const [open, setOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // structure form (used for both create and edit)
@@ -194,9 +196,14 @@ export default function FeeSetup() {
             <CardTitle className="flex items-center gap-2 text-lg">
               <FileText className="h-5 w-5 text-primary" /> Fee Structures
             </CardTitle>
-            <Button size="sm" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> New Structure
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
+                <Grid3x3 className="h-4 w-4" /> Bulk setup
+              </Button>
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> New Structure
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {structures.length === 0 && (
@@ -346,6 +353,14 @@ export default function FeeSetup() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk setup — all classes in one grid */}
+      <BulkFeeSetup
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        feeHeads={feeHeads}
+        onSaved={load}
+      />
     </div>
   );
 }
