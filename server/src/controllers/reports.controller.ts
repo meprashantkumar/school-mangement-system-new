@@ -50,7 +50,10 @@ export const getCollectionReport = asyncHandler(async (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 30));
 
   const filter: Record<string, unknown> = { voided: { $ne: true } };
+  // Credit-drawdowns move existing advance onto dues — not new cash — so keep them
+  // out of the cash collection totals unless the user explicitly filters for them.
   if (mode) filter.mode = mode;
+  else filter.mode = { $ne: "credit" };
   if (from || to) {
     // IST day boundaries so a day's totals match the IST dates shown in the UI
     // (a payment at 7 PM IST belongs to that day, not the next UTC day).
@@ -123,8 +126,15 @@ export const getAnalytics = asyncHandler(async (req, res) => {
   const classMatch = className ? { class: className } : {};
 
   // ---- Monthly collection (Apr..Mar of the selected year) ----
+  // Exclude "credit" drawdowns — they re-apply existing advance, not new cash.
   const pipeline: any[] = [
-    { $match: { voided: { $ne: true }, createdAt: { $gte: windowStart, $lte: windowEnd } } },
+    {
+      $match: {
+        voided: { $ne: true },
+        mode: { $ne: "credit" },
+        createdAt: { $gte: windowStart, $lte: windowEnd },
+      },
+    },
   ];
   if (className) {
     pipeline.push(
@@ -245,7 +255,13 @@ export const getAnalytics = asyncHandler(async (req, res) => {
   // convenience fee earned. Class filter matches the student's current class,
   // consistent with the monthly-collection chart above.
   const modePipeline: any[] = [
-    { $match: { voided: { $ne: true }, createdAt: { $gte: windowStart, $lte: windowEnd } } },
+    {
+      $match: {
+        voided: { $ne: true },
+        mode: { $ne: "credit" },
+        createdAt: { $gte: windowStart, $lte: windowEnd },
+      },
+    },
   ];
   if (className) {
     modePipeline.push(

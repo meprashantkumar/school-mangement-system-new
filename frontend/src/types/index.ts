@@ -141,6 +141,7 @@ export interface Student {
   parentEmail?: string;
   optedServices?: string[];
   serviceFees?: { name: string; amount: number }[];
+  creditBalance?: number;
   enrollmentHistory?: Enrollment[];
   status: "active" | "left" | "inactive";
   exitDate?: string;
@@ -192,16 +193,28 @@ export interface Invoice {
   createdAt?: string;
 }
 
+export interface PaymentAllocation {
+  invoice: string;
+  period?: string;
+  periodLabel?: string;
+  amount: number;
+}
+
 export interface Payment {
   _id: string;
   student: Student;
-  invoice: string;
+  invoice?: string;
+  allocations?: PaymentAllocation[];
   amount: number;
-  mode: "cash" | "cheque" | "upi" | "online";
+  creditAdded?: number;
+  mode: "cash" | "cheque" | "upi" | "online" | "credit";
   platformCharge?: number;
+  reference?: string;
+  chequeStatus?: "pending" | "cleared" | "bounced";
   receiptNo: string;
   collectedBy?: { name: string };
   note?: string;
+  voided?: boolean;
   createdAt?: string;
 }
 

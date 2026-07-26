@@ -33,6 +33,7 @@ export interface IStudent extends Document {
   parent?: Types.ObjectId; // linked parent login (User), optional
   optedServices: string[]; // optional fee heads this student uses, e.g. ["Transport"]
   serviceFees: IServiceFee[]; // per-student amount overrides for opted services
+  creditBalance: number; // advance / overpayment held for the student, applied to future dues
   enrollmentHistory: IEnrollment[]; // prior (session, class, section) snapshots
   status: "active" | "left" | "inactive";
   exitDate?: Date; // when the student left school (optional)
@@ -75,6 +76,7 @@ const studentSchema = new Schema<IStudent>(
     parent: { type: Schema.Types.ObjectId, ref: "User" },
     optedServices: { type: [String], default: [] },
     serviceFees: { type: [serviceFeeSchema], default: [] },
+    creditBalance: { type: Number, default: 0, min: 0 },
     enrollmentHistory: { type: [enrollmentSchema], default: [] },
     status: { type: String, enum: ["active", "left", "inactive"], default: "active" },
     exitDate: { type: Date },

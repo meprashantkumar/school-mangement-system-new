@@ -4,6 +4,7 @@ import { Invoice } from "../models/Invoice";
 import { FeeStructure, IFeeStructure } from "../models/FeeStructure";
 import { Student } from "../models/Student";
 import { syncInvoiceLateFee } from "../utils/lateFee";
+import { createPayment } from "../utils/collection";
 import { logAudit, AUDIT } from "../utils/audit";
 
 const MONTHS = [
@@ -70,14 +71,43 @@ async function generateForStructure(
       items,
       concessions: [],
     });
+    let saved = false;
     try {
       await invoice.save();
       created += 1;
+      saved = true;
     } catch (err: any) {
       // Unique index (student, feeStructure, period) — a concurrent run already
       // created this one. Treat as skipped rather than duplicating.
       if (err?.code === 11000) skipped += 1;
       else throw err;
+    }
+
+    // Auto-settle from the student's advance credit (e.g. a prepaid year): draw
+    // down onto this fresh invoice and record it as a "credit" payment.
+    if (saved && (student.creditBalance || 0) > 0 && invoice.dueAmount > 0) {
+      const use = Math.min(student.creditBalance, invoice.dueAmount);
+      if (use > 0) {
+        await createPayment({
+          student: student._id,
+          invoice: invoice._id,
+          allocations: [
+            {
+              invoice: invoice._id,
+              period: invoice.period,
+              periodLabel: invoice.periodLabel,
+              amount: use,
+            },
+          ],
+          amount: use,
+          mode: "credit",
+          note: "Auto-applied from advance credit",
+        });
+        invoice.paidAmount += use;
+        await invoice.save();
+        student.creditBalance -= use;
+        await student.save();
+      }
     }
   }
 
@@ -274,17 +304,31 @@ export const getStudentInvoices = asyncHandler(async (req, res) => {
     .populate("student", "name admissionNo class section")
     .sort({ createdAt: -1 });
   for (const inv of invoices) await syncInvoiceLateFee(inv); // keep late fees current
-  res.json({ invoices });
+  const student = await Student.findById(req.params.studentId).select("creditBalance");
+  res.json({ invoices, creditBalance: student?.creditBalance || 0 });
 });
 
 // POST /api/invoices/:id/concession  { reason, amount }
 export const applyConcession = asyncHandler(async (req, res) => {
   const { reason, amount } = req.body;
-  if (!reason || !amount) throw new ApiError(400, "Reason and amount are required");
+  const amt = Number(amount);
+  if (!reason || !amt || amt <= 0) {
+    throw new ApiError(400, "Reason and a valid amount are required");
+  }
   const invoice = await Invoice.findById(req.params.id);
   if (!invoice) throw new ApiError(404, "Invoice not found");
 
-  invoice.concessions.push({ reason, amount: Number(amount) });
+  // A concession can't discount more than what's actually billable (guards against
+  // a mistyped extra zero zeroing out a big invoice).
+  const maxAddable = Math.max(
+    0,
+    invoice.totalAmount + invoice.fineAmount + (invoice.lateFee || 0) - invoice.discountAmount
+  );
+  if (amt > maxAddable) {
+    throw new ApiError(400, `Concession can't exceed the remaining billable amount (₹${maxAddable})`);
+  }
+
+  invoice.concessions.push({ reason, amount: amt });
   await invoice.save();
   logAudit(
     req,

@@ -1,14 +1,31 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 
-// cash / cheque / upi = counter (no gateway charge); online = Razorpay from home
-export type PaymentMode = "cash" | "cheque" | "upi" | "online";
+// cash / cheque / upi = counter (no gateway charge); online = Razorpay from home;
+// credit = a drawdown of the student's advance balance (no new cash — excluded
+// from cash collection reports).
+export type PaymentMode = "cash" | "cheque" | "upi" | "online" | "credit";
+
+// How one payment's money was split across the student's invoices. A lump-sum
+// payment can settle several months in one receipt.
+export interface IPaymentAllocation {
+  invoice: Types.ObjectId;
+  period?: string;
+  periodLabel?: string;
+  amount: number;
+}
+
+export type ChequeStatus = "pending" | "cleared" | "bounced";
 
 export interface IPayment extends Document {
   student: Types.ObjectId;
-  invoice: Types.ObjectId;
-  amount: number;
+  invoice?: Types.ObjectId; // primary/settled invoice (optional for pure-advance)
+  allocations: IPaymentAllocation[]; // per-invoice split for multi-month payments
+  amount: number; // total cash received (counter) / fee credited (online)
+  creditAdded: number; // surplus of `amount` parked as advance credit
   mode: PaymentMode;
   platformCharge: number; // ₹ convenience fee for online payments (0 otherwise)
+  reference?: string; // UTR / cheque no / txn reference
+  chequeStatus?: ChequeStatus; // lifecycle for cheque payments
   receiptNo: string;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
@@ -23,13 +40,27 @@ export interface IPayment extends Document {
   updatedAt: Date;
 }
 
+const allocationSchema = new Schema<IPaymentAllocation>(
+  {
+    invoice: { type: Schema.Types.ObjectId, ref: "Invoice", required: true },
+    period: { type: String },
+    periodLabel: { type: String },
+    amount: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
+
 const paymentSchema = new Schema<IPayment>(
   {
     student: { type: Schema.Types.ObjectId, ref: "Student", required: true },
-    invoice: { type: Schema.Types.ObjectId, ref: "Invoice", required: true },
-    amount: { type: Number, required: true, min: 1 },
-    mode: { type: String, enum: ["cash", "cheque", "upi", "online"], required: true },
+    invoice: { type: Schema.Types.ObjectId, ref: "Invoice" },
+    allocations: { type: [allocationSchema], default: [] },
+    amount: { type: Number, required: true, min: 0 },
+    creditAdded: { type: Number, default: 0, min: 0 },
+    mode: { type: String, enum: ["cash", "cheque", "upi", "online", "credit"], required: true },
     platformCharge: { type: Number, default: 0 },
+    reference: { type: String, trim: true },
+    chequeStatus: { type: String, enum: ["pending", "cleared", "bounced"] },
     receiptNo: { type: String, required: true, unique: true },
     razorpayOrderId: { type: String },
     razorpayPaymentId: { type: String },

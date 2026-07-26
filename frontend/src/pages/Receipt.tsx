@@ -75,6 +75,7 @@ export default function Receipt() {
             {invoice.periodLabel && row("Fee period", invoice.periodLabel)}
             {invoice.academicYear && row("Session", invoice.academicYear)}
             {row("Mode", String(payment.mode || "").toUpperCase())}
+            {payment.reference && row("Reference", payment.reference)}
             {payment.collectedBy?.name && row("Collected by", payment.collectedBy.name)}
           </div>
 
@@ -102,6 +103,26 @@ export default function Receipt() {
               <span className="text-2xl font-bold text-primary">{formatINR(payment.amount)}</span>
             </div>
           )}
+
+          {/* Multi-month split + advance credit (for a lump-sum / advance payment) */}
+          {Array.isArray(payment.allocations) &&
+            payment.allocations.length > 0 &&
+            (payment.allocations.length > 1 || payment.creditAdded > 0) && (
+              <div className="mt-3 space-y-1 rounded-lg border px-4 py-3 text-sm">
+                {payment.allocations.map((a: any, i: number) => (
+                  <div key={i} className="flex justify-between">
+                    <span className="text-muted-foreground">{a.periodLabel || "Fee"}</span>
+                    <span>{formatINR(a.amount)}</span>
+                  </div>
+                ))}
+                {payment.creditAdded > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Saved as advance credit</span>
+                    <span>{formatINR(payment.creditAdded)}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
           {typeof invoice.dueAmount === "number" && (
             <p className="mt-2 text-right text-sm text-muted-foreground">

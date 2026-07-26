@@ -8,7 +8,8 @@ import { razorpay } from "../config/razorpay";
 import { env } from "../config/env";
 import { sendMail } from "../config/mailer";
 import { logAudit, AUDIT } from "../utils/audit";
-import { nextReceiptNo } from "../utils/receipt";
+import { createPayment, planAllocations, applyAllocations } from "../utils/collection";
+import { syncInvoiceLateFee } from "../utils/lateFee";
 import { IUser } from "../models/User";
 
 // Emails the parent a payment confirmation / receipt (best-effort; never blocks the
@@ -47,29 +48,31 @@ function sendPaymentConfirmation(payment: any, invoice: IInvoice, student: any) 
   ).catch((e) => console.error("Payment confirmation email failed:", e));
 }
 
-// Creates a Payment, assigning a fresh receipt number. The receipt number
-// (count+1) isn't atomic, so if two payments land at once one hits the unique
-// receiptNo index — we simply retry with a recomputed number. Any OTHER duplicate
-// (e.g. a replayed Razorpay payment id) is rethrown for the caller to handle.
-async function createPayment(data: Record<string, unknown>) {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const receiptNo = await nextReceiptNo();
-      return await Payment.create({ ...data, receiptNo });
-    } catch (err: any) {
-      if (err?.code === 11000 && err?.keyPattern?.receiptNo && attempt < 4) continue;
-      throw err;
-    }
-  }
-  throw new ApiError(500, "Could not generate a unique receipt number");
-}
-
 // Parents/students may only touch invoices belonging to their own children.
 async function assertCanAccess(user: IUser, invoice: IInvoice) {
   if (user.role === "superadmin" || user.role === "admin") return;
   const student = await Student.findById(invoice.student);
   if (!student || student.parentEmail !== user.email) {
     throw new ApiError(403, "You cannot access this invoice");
+  }
+}
+
+// Un-credits a payment's invoice(s): subtracts each allocation (or, for legacy
+// single-invoice payments, invoice + amount) back off paidAmount. Used by both
+// void and cheque-bounce. Does not touch the credit balance (callers handle that).
+async function reverseAllocations(payment: any) {
+  const allocs =
+    payment.allocations?.length > 0
+      ? payment.allocations
+      : payment.invoice
+      ? [{ invoice: payment.invoice, amount: payment.amount }]
+      : [];
+  for (const a of allocs) {
+    const inv = await Invoice.findById(a.invoice);
+    if (inv) {
+      inv.paidAmount = Math.max(0, inv.paidAmount - a.amount);
+      await inv.save();
+    }
   }
 }
 
@@ -118,6 +121,171 @@ export const recordCounterPayment = asyncHandler(async (req, res) => {
   );
 
   res.status(201).json({ message: "Payment recorded", payment, invoice });
+});
+
+// POST /api/payments/collect  { studentId, invoiceId?, amount, mode, reference?, note? }
+// The unified counter collection. Spreads `amount` across the student's dues
+// (oldest month first) and parks any surplus as advance credit. One receipt can
+// therefore settle several months and/or leave an advance. If invoiceId is given,
+// only that invoice is targeted (surplus still becomes advance credit).
+export const recordCollection = asyncHandler(async (req, res) => {
+  const { studentId, invoiceId, amount, mode, reference, note } = req.body;
+  const amt = Math.round(Number(amount));
+  if (!studentId || !amt || amt <= 0) {
+    throw new ApiError(400, "Student and a valid amount are required");
+  }
+  const allowedModes = ["cash", "cheque", "upi"];
+  const payMode = allowedModes.includes(mode) ? mode : "cash";
+
+  const student = await Student.findById(studentId);
+  if (!student) throw new ApiError(404, "Student not found");
+
+  // Target invoices (something owing), oldest month first, late fees current.
+  let invoices: IInvoice[];
+  if (invoiceId) {
+    const inv = await Invoice.findById(invoiceId);
+    if (!inv || String(inv.student) !== String(student._id)) {
+      throw new ApiError(404, "Invoice not found for this student");
+    }
+    await syncInvoiceLateFee(inv);
+    invoices = inv.dueAmount > 0 ? [inv] : [];
+  } else {
+    invoices = await Invoice.find({ student: student._id }).sort({ period: 1 });
+    for (const inv of invoices) await syncInvoiceLateFee(inv);
+    invoices = invoices.filter((i) => i.dueAmount > 0);
+  }
+
+  const { allocations, leftover } = planAllocations(invoices, amt);
+
+  // Payment first (reserves the receipt), then credit — mirrors the single-invoice
+  // path so a failed receipt write never leaves a credited invoice with no receipt.
+  const payment = await createPayment({
+    student: student._id,
+    invoice: allocations[0]?.invoice, // primary invoice (for the legacy receipt view)
+    allocations,
+    amount: amt, // total cash received (incl. any advance)
+    creditAdded: leftover, // surplus parked as advance credit
+    mode: payMode,
+    reference: reference || undefined,
+    note,
+    chequeStatus: payMode === "cheque" ? "pending" : undefined,
+    collectedBy: req.user!.id,
+  });
+
+  await applyAllocations(allocations, invoices);
+  if (leftover > 0) {
+    student.creditBalance = (student.creditBalance || 0) + leftover;
+    await student.save();
+  }
+
+  logAudit(
+    req,
+    AUDIT.PAYMENT,
+    `Collected ₹${amt} (${payMode}) — ${payment.receiptNo} from ${student.name}${
+      leftover ? ` (₹${leftover} to advance)` : ""
+    }`,
+    { entity: "Payment", entityId: String(payment._id) }
+  );
+
+  const updated = await Invoice.find({ student: student._id }).sort({ createdAt: -1 });
+  res.status(201).json({
+    message: "Payment recorded",
+    payment,
+    invoices: updated,
+    creditBalance: student.creditBalance || 0,
+  });
+});
+
+// POST /api/payments/apply-credit  { studentId, amount? }
+// Draws down a student's advance credit onto their outstanding dues (oldest month
+// first). Records a "credit" payment — no new cash, so it's excluded from cash
+// collection reports.
+export const applyCredit = asyncHandler(async (req, res) => {
+  const { studentId, amount } = req.body;
+  const student = await Student.findById(studentId);
+  if (!student) throw new ApiError(404, "Student not found");
+
+  const requested = Math.round(Number(amount) || student.creditBalance || 0);
+  const use = Math.min(Math.max(0, requested), student.creditBalance || 0);
+  if (use <= 0) throw new ApiError(400, "No advance credit to apply");
+
+  let invoices = await Invoice.find({ student: student._id }).sort({ period: 1 });
+  for (const inv of invoices) await syncInvoiceLateFee(inv);
+  invoices = invoices.filter((i) => i.dueAmount > 0);
+
+  const { allocations } = planAllocations(invoices, use);
+  if (allocations.length === 0) throw new ApiError(400, "No outstanding dues to apply credit to");
+  const applied = allocations.reduce((s, a) => s + a.amount, 0);
+
+  const payment = await createPayment({
+    student: student._id,
+    invoice: allocations[0].invoice,
+    allocations,
+    amount: applied,
+    mode: "credit",
+    note: "Applied from advance credit",
+    collectedBy: req.user!.id,
+  });
+  await applyAllocations(allocations, invoices);
+  student.creditBalance = Math.max(0, (student.creditBalance || 0) - applied);
+  await student.save();
+
+  logAudit(
+    req,
+    AUDIT.PAYMENT,
+    `Applied ₹${applied} advance credit — ${payment.receiptNo} for ${student.name}`,
+    { entity: "Payment", entityId: String(payment._id) }
+  );
+
+  const updated = await Invoice.find({ student: student._id }).sort({ createdAt: -1 });
+  res.json({
+    message: `Applied ₹${applied} from advance credit`,
+    payment,
+    invoices: updated,
+    creditBalance: student.creditBalance,
+  });
+});
+
+// PATCH /api/payments/:id/cheque  { status: "cleared" | "bounced" }
+// A bounced cheque reverses its credit (un-credits the invoice(s) + removes any
+// advance) and voids the payment; the row + receipt number are kept for the trail.
+export const updateChequeStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  if (status !== "cleared" && status !== "bounced") {
+    throw new ApiError(400, "Status must be 'cleared' or 'bounced'");
+  }
+  const payment = await Payment.findById(req.params.id);
+  if (!payment) throw new ApiError(404, "Payment not found");
+  if (payment.mode !== "cheque") throw new ApiError(400, "Not a cheque payment");
+  if (payment.voided) throw new ApiError(400, "This payment is already voided");
+  if (payment.chequeStatus === status) {
+    return res.json({ message: `Cheque already ${status}`, payment });
+  }
+
+  if (status === "bounced") {
+    await reverseAllocations(payment);
+    if (payment.creditAdded) {
+      const student = await Student.findById(payment.student);
+      if (student) {
+        student.creditBalance = Math.max(0, (student.creditBalance || 0) - payment.creditAdded);
+        await student.save();
+      }
+    }
+    payment.voided = true;
+    payment.voidedAt = new Date();
+    payment.voidReason = "Cheque bounced";
+    payment.voidedBy = req.user!._id as any;
+  }
+  payment.chequeStatus = status;
+  await payment.save();
+
+  logAudit(
+    req,
+    status === "bounced" ? AUDIT.VOID : AUDIT.PAYMENT,
+    `Cheque ${payment.receiptNo} marked ${status}${status === "bounced" ? " — reversed" : ""}`,
+    { entity: "Payment", entityId: String(payment._id) }
+  );
+  res.json({ message: `Cheque marked ${status}`, payment });
 });
 
 // The convenience fee for an online payment: a percentage of the amount being
@@ -254,10 +422,20 @@ export const voidPayment = asyncHandler(async (req, res) => {
   if (!payment) throw new ApiError(404, "Payment not found");
   if (payment.voided) throw new ApiError(400, "This payment is already voided");
 
-  const invoice = await Invoice.findById(payment.invoice);
-  if (invoice) {
-    invoice.paidAmount = Math.max(0, invoice.paidAmount - payment.amount);
-    await invoice.save();
+  // Un-credit the invoice(s) this payment settled.
+  await reverseAllocations(payment);
+
+  // Reverse the credit side too.
+  const student = await Student.findById(payment.student);
+  if (student) {
+    if (payment.mode === "credit") {
+      // This payment DREW from advance credit; voiding restores it.
+      student.creditBalance = (student.creditBalance || 0) + payment.amount;
+    } else if (payment.creditAdded) {
+      // This payment PARKED an advance; voiding removes it.
+      student.creditBalance = Math.max(0, (student.creditBalance || 0) - payment.creditAdded);
+    }
+    await student.save();
   }
 
   payment.voided = true;
@@ -272,6 +450,7 @@ export const voidPayment = asyncHandler(async (req, res) => {
     `Voided payment ${payment.receiptNo} (₹${payment.amount})${reason ? ` — ${reason}` : ""}`,
     { entity: "Payment", entityId: String(payment._id) }
   );
+  const invoice = payment.invoice ? await Invoice.findById(payment.invoice) : null;
   res.json({ message: "Payment voided", payment, invoice });
 });
 
