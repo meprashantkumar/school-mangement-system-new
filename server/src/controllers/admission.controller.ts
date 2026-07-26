@@ -10,7 +10,8 @@ import { moveToTrash } from "./trash.controller";
 // Builds a friendly, sequential-ish application number for a session. The unique
 // index is the real guard; on the rare race we retry with a bumped counter.
 async function nextApplicationNo(session: string): Promise<string> {
-  const year = (session.split("-")[0] || "").trim() || String(new Date().getFullYear());
+  const year =
+    (session.split("-")[0] || "").trim() || String(new Date().getFullYear());
   const count = await Admission.countDocuments({ session });
   return `ADM-${year}-${String(count + 1).padStart(4, "0")}`;
 }
@@ -24,9 +25,12 @@ export const submitAdmission = asyncHandler(async (req, res) => {
   const parentPhone = String(b.parentPhone || "").trim();
 
   if (!studentName) throw new ApiError(400, "Student's name is required");
-  if (!applyingForClass) throw new ApiError(400, "Please choose the class you're applying for");
-  if (!parentName) throw new ApiError(400, "Parent / guardian name is required");
-  if (!parentPhone) throw new ApiError(400, "A contact phone number is required");
+  if (!applyingForClass)
+    throw new ApiError(400, "Please choose the class you're applying for");
+  if (!parentName)
+    throw new ApiError(400, "Parent / guardian name is required");
+  if (!parentPhone)
+    throw new ApiError(400, "A contact phone number is required");
 
   const base = {
     studentName,
@@ -34,11 +38,15 @@ export const submitAdmission = asyncHandler(async (req, res) => {
     dateOfBirth: b.dateOfBirth ? new Date(b.dateOfBirth) : undefined,
     applyingForClass,
     session: String(b.session || CURRENT_SESSION).trim(),
-    previousSchool: b.previousSchool ? String(b.previousSchool).trim() : undefined,
+    previousSchool: b.previousSchool
+      ? String(b.previousSchool).trim()
+      : undefined,
     category: b.category ? String(b.category).trim() : "General",
     parentName,
     parentPhone,
-    parentEmail: b.parentEmail ? String(b.parentEmail).trim().toLowerCase() : undefined,
+    parentEmail: b.parentEmail
+      ? String(b.parentEmail).trim().toLowerCase()
+      : undefined,
     address: b.address ? String(b.address).trim() : undefined,
     message: b.message ? String(b.message).trim() : undefined,
     status: "pending" as const,
@@ -58,7 +66,11 @@ export const submitAdmission = asyncHandler(async (req, res) => {
       throw err;
     }
   }
-  if (!created) throw new ApiError(500, "Could not submit the application. Please try again.");
+  if (!created)
+    throw new ApiError(
+      500,
+      "Could not submit the application. Please try again."
+    );
 
   res.status(201).json({
     message: "Application submitted successfully.",
@@ -80,7 +92,9 @@ export const listAdmissions = asyncHandler(async (req, res) => {
       { parentPhone: { $regex: search, $options: "i" } },
     ];
   }
-  const applications = await Admission.find(filter).sort({ createdAt: -1 }).limit(1000);
+  const applications = await Admission.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(1000);
   const counts = {
     pending: await Admission.countDocuments({ status: "pending" }),
     approved: await Admission.countDocuments({ status: "approved" }),
@@ -105,14 +119,25 @@ export const approveAdmission = asyncHandler(async (req, res) => {
   const application = await Admission.findById(req.params.id);
   if (!application) throw new ApiError(404, "Application not found");
   if (application.status === "approved" && application.convertedStudent) {
-    throw new ApiError(400, "This application has already been approved and enrolled.");
+    throw new ApiError(
+      400,
+      "This application has already been approved and enrolled."
+    );
   }
 
   const admissionNo = String(req.body.admissionNo || "").trim();
-  if (!admissionNo) throw new ApiError(400, "Please assign an admission number to enrol the student.");
+  if (!admissionNo)
+    throw new ApiError(
+      400,
+      "Please assign an admission number to enrol the student."
+    );
 
   const clash = await Student.findOne({ admissionNo });
-  if (clash) throw new ApiError(400, "A student with this admission number already exists.");
+  if (clash)
+    throw new ApiError(
+      400,
+      "A student with this admission number already exists."
+    );
 
   // Link to a parent login if one already exists with this email.
   let parent;
@@ -138,7 +163,9 @@ export const approveAdmission = asyncHandler(async (req, res) => {
   });
 
   application.status = "approved";
-  application.reviewNote = req.body.note ? String(req.body.note).trim() : application.reviewNote;
+  application.reviewNote = req.body.note
+    ? String(req.body.note).trim()
+    : application.reviewNote;
   application.reviewedBy = req.user?._id as any;
   application.reviewedAt = new Date();
   application.convertedStudent = student._id as any;
@@ -150,7 +177,11 @@ export const approveAdmission = asyncHandler(async (req, res) => {
     `Approved admission ${application.applicationNo} — enrolled ${student.name} (${student.admissionNo})`,
     { entity: "Admission", entityId: String(application._id) }
   );
-  res.json({ message: "Application approved and student enrolled.", application, student });
+  res.json({
+    message: "Application approved and student enrolled.",
+    application,
+    student,
+  });
 });
 
 // POST /api/admissions/:id/reject  { note? }  (staff)
@@ -158,17 +189,27 @@ export const rejectAdmission = asyncHandler(async (req, res) => {
   const application = await Admission.findById(req.params.id);
   if (!application) throw new ApiError(404, "Application not found");
   if (application.convertedStudent) {
-    throw new ApiError(400, "This application is already enrolled and can't be rejected.");
+    throw new ApiError(
+      400,
+      "This application is already enrolled and can't be rejected."
+    );
   }
   application.status = "rejected";
-  application.reviewNote = req.body.note ? String(req.body.note).trim() : undefined;
+  application.reviewNote = req.body.note
+    ? String(req.body.note).trim()
+    : undefined;
   application.reviewedBy = req.user?._id as any;
   application.reviewedAt = new Date();
   await application.save();
-  logAudit(req, AUDIT.ADMISSION, `Rejected admission ${application.applicationNo} (${application.studentName})`, {
-    entity: "Admission",
-    entityId: String(application._id),
-  });
+  logAudit(
+    req,
+    AUDIT.ADMISSION,
+    `Rejected admission ${application.applicationNo} (${application.studentName})`,
+    {
+      entity: "Admission",
+      entityId: String(application._id),
+    }
+  );
   res.json({ message: "Application rejected.", application });
 });
 
@@ -187,7 +228,11 @@ export const reopenAdmission = asyncHandler(async (req, res) => {
   application.reviewedBy = undefined;
   application.reviewedAt = undefined;
   await application.save();
-  logAudit(req, AUDIT.ADMISSION, `Reopened admission ${application.applicationNo} (${application.studentName})`);
+  logAudit(
+    req,
+    AUDIT.ADMISSION,
+    `Reopened admission ${application.applicationNo} (${application.studentName})`
+  );
   res.json({ message: "Application moved back to pending.", application });
 });
 
@@ -197,6 +242,10 @@ export const deleteAdmission = asyncHandler(async (req, res) => {
   if (!application) throw new ApiError(404, "Application not found");
   const label = `${application.applicationNo} — ${application.studentName}`;
   await moveToTrash(req, "Admission", application, label);
-  logAudit(req, AUDIT.ADMISSION, `Deleted admission ${label} — recoverable from recycle bin`);
+  logAudit(
+    req,
+    AUDIT.ADMISSION,
+    `Deleted admission ${label} — recoverable from recycle bin`
+  );
   res.json({ message: "Application moved to recycle bin" });
 });
