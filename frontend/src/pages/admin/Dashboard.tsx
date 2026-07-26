@@ -11,6 +11,7 @@ import {
   CalendarPlus,
   ClipboardCheck,
   CalendarRange,
+  UserCheck,
 } from "lucide-react";
 import api from "@/lib/api";
 import { StatCard } from "@/components/StatCard";
@@ -33,6 +34,7 @@ const quickActions = [
   { to: "/admin/fee-generation", label: "Generate fee invoices", icon: CalendarPlus },
   { to: "/admin/attendance", label: "Mark attendance", icon: ClipboardCheck },
   { to: "/admin/timetable", label: "Manage timetable", icon: CalendarRange },
+  { to: "/admin/timetable/substitution", label: "Arrange substitution", icon: UserCheck },
 ];
 
 export default function Dashboard() {

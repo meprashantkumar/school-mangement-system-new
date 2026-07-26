@@ -6,8 +6,14 @@ import { ExamTimetable } from "../models/ExamTimetable";
 import { Exam } from "../models/Exam";
 import { Teacher } from "../models/Teacher";
 import { Student } from "../models/Student";
+import { Holiday } from "../models/Holiday";
 import { CURRENT_SESSION } from "../utils/academics";
+import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
 import { logAudit, AUDIT } from "../utils/audit";
+
+const WEEKDAY_NAMES = [
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
 
 const OID = /^[0-9a-fA-F]{24}$/;
 const asOid = (v: unknown) => (typeof v === "string" && OID.test(v) ? v : undefined);
@@ -136,6 +142,82 @@ export const getBusyTeachers = asyncHandler(async (req, res) => {
     }
   }
   res.json({ busy });
+});
+
+// ---- Substitution board (free-teacher / cover finder) -----------------------
+
+// GET /api/timetable/substitution?date=YYYY-MM-DD&session=  (staff)
+// For the given date's weekday: which teachers are FREE each period (to cover an
+// absent teacher) and which are BUSY (with their class + subject). Read-only —
+// nothing is stored. Sundays and named holidays return working:false.
+export const getSubstitutionBoard = asyncHandler(async (req, res) => {
+  const dateKey = toDateKey(req.query.date || new Date().toISOString());
+  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const dow = dateFromKey(dateKey).getUTCDay(); // 0=Sun..6=Sat
+  const iso = dow === 0 ? 7 : dow; // 1=Mon..7=Sun (matches slot.day)
+  const weekdayLabel = WEEKDAY_NAMES[dow];
+
+  const config = await ensureConfig();
+
+  // Is it a working day? Sunday / non-working weekday / named holiday → nothing to cover.
+  let working = config.workingDays.includes(iso) && !isSundayKey(dateKey);
+  let reason: string | null = null;
+  if (isSundayKey(dateKey)) reason = "Sunday — weekly off";
+  else if (!config.workingDays.includes(iso)) reason = `${weekdayLabel} is not a working day`;
+  const holiday = await Holiday.findOne({ dateKey });
+  if (holiday) {
+    working = false;
+    reason = `Holiday — ${holiday.name}`;
+  }
+
+  const teachers = await Teacher.find({ isActive: true }).select("name designation").sort({ name: 1 });
+  const teacherList = teachers.map((t) => ({
+    _id: t._id,
+    name: t.name,
+    designation: t.designation || "",
+  }));
+
+  if (!working) {
+    return res.json({
+      date: dateKey, weekday: iso, weekdayLabel, working: false, reason,
+      periods: [], teachers: teacherList, grid: [],
+    });
+  }
+
+  // Every teacher-slot scheduled on this weekday, across all classes.
+  const tts = await ClassTimetable.find({ session });
+  type Busy = {
+    teacher: string; teacherName: string; class: string; section: string;
+    subjectName: string; period: number;
+  };
+  const busyAll: Busy[] = [];
+  for (const tt of tts) {
+    for (const s of tt.slots) {
+      if (s.day !== iso || !s.teacher) continue;
+      busyAll.push({
+        teacher: String(s.teacher), teacherName: s.teacherName,
+        class: tt.class, section: tt.section, subjectName: s.subjectName, period: s.period,
+      });
+    }
+  }
+
+  // Only the periods actually running today (handles the shorter Saturday cleanly).
+  const activePeriods = [...new Set(busyAll.map((b) => b.period))].sort((a, b) => a - b);
+  const labelOf = (p: number) => config.periods.find((x) => x.period === p)?.label || `Period ${p}`;
+
+  const grid = activePeriods.map((p) => {
+    const busy = busyAll.filter((b) => b.period === p);
+    const busyIds = new Set(busy.map((b) => b.teacher));
+    const free = teacherList.filter((t) => !busyIds.has(String(t._id)));
+    return { period: p, label: labelOf(p), busy, free };
+  });
+
+  res.json({
+    date: dateKey, weekday: iso, weekdayLabel, working: true, reason: null,
+    periods: activePeriods.map((p) => ({ period: p, label: labelOf(p) })),
+    teachers: teacherList,
+    grid,
+  });
 });
 
 // ---- Teacher timetable (derived from class timetables) ----------------------

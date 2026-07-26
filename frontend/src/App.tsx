@@ -28,6 +28,7 @@ import Timetable from "./pages/admin/Timetable";
 import ClassTimetable from "./pages/admin/timetable/ClassTimetable";
 import TeacherTimetable from "./pages/admin/timetable/TeacherTimetable";
 import ExamTimetable from "./pages/admin/timetable/ExamTimetable";
+import Substitution from "./pages/admin/timetable/Substitution";
 import Portal from "./pages/portal/Portal";
 import ReportCard from "./pages/portal/ReportCard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
@@ -107,6 +108,7 @@ export default function App() {
         <Route path="/admin/timetable" element={<Timetable />} />
         <Route path="/admin/timetable/class" element={<ClassTimetable />} />
         <Route path="/admin/timetable/teacher" element={<TeacherTimetable />} />
+        <Route path="/admin/timetable/substitution" element={<Substitution />} />
         <Route path="/admin/timetable/exam" element={<ExamTimetable />} />
         <Route path="/admin/fees" element={<FeeSetup />} />
         <Route path="/admin/fee-generation" element={<FeeGeneration />} />

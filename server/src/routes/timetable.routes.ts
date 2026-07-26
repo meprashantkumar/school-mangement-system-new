@@ -6,6 +6,7 @@ import {
   getClassTimetable,
   saveClassTimetable,
   getBusyTeachers,
+  getSubstitutionBoard,
   getTeacherTimetableAdmin,
   getExamTimetable,
   saveExamTimetable,
@@ -26,6 +27,9 @@ router.put("/config", staff, updateConfig);
 router.get("/class", staffOrTeacher, getClassTimetable);
 router.put("/class", staff, saveClassTimetable);
 router.get("/busy", staff, getBusyTeachers);
+
+// Substitution board — free/busy teachers for a day (cover an absent teacher)
+router.get("/substitution", staff, getSubstitutionBoard);
 
 // Teacher timetable (derived) — staff can view any teacher's
 router.get("/teacher", staff, getTeacherTimetableAdmin);

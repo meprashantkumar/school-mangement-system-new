@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CalendarRange, UserCog, CalendarClock, ChevronRight } from "lucide-react";
+import { CalendarRange, UserCog, CalendarClock, UserCheck, ChevronRight } from "lucide-react";
 
 const cards = [
   {
@@ -13,6 +13,12 @@ const cards = [
     icon: UserCog,
     title: "Teacher Timetable",
     desc: "See any teacher's weekly schedule, generated automatically from the class timetables.",
+  },
+  {
+    to: "/admin/timetable/substitution",
+    icon: UserCheck,
+    title: "Substitution / Cover",
+    desc: "A teacher's absent? Find who's free each period to cover their classes for the day.",
   },
   {
     to: "/admin/timetable/exam",
