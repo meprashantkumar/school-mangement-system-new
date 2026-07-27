@@ -118,6 +118,7 @@ export default function StudentDetails() {
           <CardContent className="grid grid-cols-2 gap-4">
             <Field label="Admission No" value={student.admissionNo} />
             <Field label="Date of admission" value={fmtDate(student.dateOfAdmission)} />
+            <Field label="Date of birth" value={fmtDate(student.dateOfBirth)} />
             <Field label="Class" value={`${classLabel(student.class)}${student.section ? "-" + student.section : ""}`} />
             <Field label="Roll No" value={student.rollNo} />
             <Field label="Gender" value={student.gender} />
@@ -147,8 +148,12 @@ export default function StudentDetails() {
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
             <Field label="Parent name" value={student.parentName} />
+            <Field label="Mother's name" value={student.motherName} />
             <Field label="Phone" value={student.parentPhone} />
             <Field label="Email" value={student.parentEmail} />
+            <div className="col-span-2">
+              <Field label="Address" value={student.address} />
+            </div>
           </CardContent>
         </Card>
       </div>

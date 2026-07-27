@@ -130,6 +130,7 @@ export interface Student {
   admissionNo: string;
   name: string;
   dateOfAdmission?: string;
+  dateOfBirth?: string;
   session?: string;
   class: string;
   section?: string;
@@ -137,8 +138,10 @@ export interface Student {
   gender?: string;
   category: string;
   parentName?: string;
+  motherName?: string;
   parentPhone?: string;
   parentEmail?: string;
+  address?: string;
   optedServices?: string[];
   serviceFees?: { name: string; amount: number }[];
   creditBalance?: number;

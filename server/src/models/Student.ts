@@ -21,6 +21,7 @@ export interface IStudent extends Document {
   admissionNo: string;
   name: string;
   dateOfAdmission: Date; // when the student joined the school
+  dateOfBirth?: Date; // student's date of birth (optional)
   session: string; // current academic session, e.g. "2026-27"
   class: string;
   section?: string;
@@ -28,8 +29,10 @@ export interface IStudent extends Document {
   gender?: string;
   category: string;
   parentName?: string;
+  motherName?: string; // mother's name (optional)
   parentPhone?: string;
   parentEmail?: string;
+  address?: string; // residential address (optional)
   parent?: Types.ObjectId; // linked parent login (User), optional
   optedServices: string[]; // optional fee heads this student uses, e.g. ["Transport"]
   serviceFees: IServiceFee[]; // per-student amount overrides for opted services
@@ -64,6 +67,7 @@ const studentSchema = new Schema<IStudent>(
     admissionNo: { type: String, required: true, unique: true, trim: true },
     name: { type: String, required: true, trim: true },
     dateOfAdmission: { type: Date, default: Date.now },
+    dateOfBirth: { type: Date },
     session: { type: String, default: CURRENT_SESSION, trim: true },
     class: { type: String, required: true, trim: true },
     section: { type: String, trim: true },
@@ -71,8 +75,10 @@ const studentSchema = new Schema<IStudent>(
     gender: { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
     category: { type: String, default: "General", trim: true },
     parentName: { type: String, trim: true },
+    motherName: { type: String, trim: true },
     parentPhone: { type: String, trim: true },
     parentEmail: { type: String, trim: true, lowercase: true },
+    address: { type: String, trim: true },
     parent: { type: Schema.Types.ObjectId, ref: "User" },
     optedServices: { type: [String], default: [] },
     serviceFees: { type: [serviceFeeSchema], default: [] },

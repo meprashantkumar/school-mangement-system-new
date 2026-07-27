@@ -98,6 +98,7 @@ export const updateStudent = asyncHandler(async (req, res) => {
   const fields = [
     "name",
     "dateOfAdmission",
+    "dateOfBirth",
     "session",
     "class",
     "section",
@@ -105,8 +106,10 @@ export const updateStudent = asyncHandler(async (req, res) => {
     "gender",
     "category",
     "parentName",
+    "motherName",
     "parentPhone",
     "parentEmail",
+    "address",
     "optedServices",
     "serviceFees",
     "status",
@@ -361,10 +364,14 @@ export const importStudents = asyncHandler(async (req, res) => {
       let doa: Date | undefined = row.dateOfAdmission ? new Date(row.dateOfAdmission) : undefined;
       if (doa && Number.isNaN(doa.getTime())) doa = undefined;
 
+      let dob: Date | undefined = row.dateOfBirth ? new Date(row.dateOfBirth) : undefined;
+      if (dob && Number.isNaN(dob.getTime())) dob = undefined;
+
       await Student.create({
         admissionNo,
         name: String(row.name).trim(),
         dateOfAdmission: doa,
+        dateOfBirth: dob,
         session: row.session || undefined,
         class: String(row.class).trim(),
         section: row.section || undefined,
@@ -372,8 +379,10 @@ export const importStudents = asyncHandler(async (req, res) => {
         gender: genders.includes(row.gender) ? row.gender : "",
         category: row.category || "General",
         parentName: row.parentName || undefined,
+        motherName: row.motherName || undefined,
         parentPhone: row.parentPhone != null ? String(row.parentPhone) : undefined,
         parentEmail: row.parentEmail || undefined,
+        address: row.address || undefined,
         optedServices: opted,
         serviceFees,
         status: statuses.includes(row.status) ? row.status : "active",

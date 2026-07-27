@@ -52,14 +52,17 @@ const emptyForm = {
   admissionNo: "",
   name: "",
   dateOfAdmission: "",
+  dateOfBirth: "",
   class: "",
   section: "",
   rollNo: "",
   gender: "",
   category: "General",
   parentName: "",
+  motherName: "",
   parentPhone: "",
   parentEmail: "",
+  address: "",
 };
 
 // Columns used for CSV import/export (order matters for the CSV header).
@@ -67,6 +70,7 @@ const CSV_COLUMNS = [
   "admissionNo",
   "name",
   "dateOfAdmission",
+  "dateOfBirth",
   "session",
   "class",
   "section",
@@ -74,8 +78,10 @@ const CSV_COLUMNS = [
   "gender",
   "category",
   "parentName",
+  "motherName",
   "parentPhone",
   "parentEmail",
+  "address",
   "optedServices",
   "status",
 ];
@@ -225,14 +231,17 @@ export default function Students() {
       admissionNo: s.admissionNo,
       name: s.name,
       dateOfAdmission: s.dateOfAdmission ? s.dateOfAdmission.slice(0, 10) : "",
+      dateOfBirth: s.dateOfBirth ? s.dateOfBirth.slice(0, 10) : "",
       class: s.class,
       section: s.section || "",
       rollNo: s.rollNo || "",
       gender: s.gender || "",
       category: s.category || "General",
       parentName: s.parentName || "",
+      motherName: s.motherName || "",
       parentPhone: s.parentPhone || "",
       parentEmail: s.parentEmail || "",
+      address: s.address || "",
     });
     setOptedServices(s.optedServices || []);
     // Show each opted service's effective amount: the student's override if set,
@@ -283,6 +292,7 @@ export default function Students() {
       optedServices,
       serviceFees,
       dateOfAdmission: form.dateOfAdmission || undefined,
+      dateOfBirth: form.dateOfBirth || undefined,
     };
     try {
       if (editingId) {
@@ -356,6 +366,7 @@ export default function Students() {
         const rows = all.map((s) => ({
           ...s,
           dateOfAdmission: s.dateOfAdmission ? s.dateOfAdmission.slice(0, 10) : "",
+          dateOfBirth: s.dateOfBirth ? s.dateOfBirth.slice(0, 10) : "",
           optedServices: (s.optedServices || []).join(";"),
         }));
         downloadFile(`students-${stamp}.csv`, toCSV(rows as any, CSV_COLUMNS), "text/csv;charset=utf-8");
@@ -726,6 +737,15 @@ export default function Students() {
               />
             </div>
             <div className="space-y-1.5">
+              <Label>Date of Birth <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Input
+                name="dateOfBirth"
+                type="date"
+                value={form.dateOfBirth}
+                onChange={change}
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label>Class</Label>
               <select name="class" value={form.class} onChange={change} className={selectClass} required>
                 <option value="">Select class</option>
@@ -781,6 +801,10 @@ export default function Students() {
               <Input name="parentName" value={form.parentName} onChange={change} />
             </div>
             <div className="space-y-1.5">
+              <Label>Mother's Name <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Input name="motherName" value={form.motherName} onChange={change} />
+            </div>
+            <div className="space-y-1.5">
               <Label>Parent Phone</Label>
               <Input name="parentPhone" value={form.parentPhone} onChange={change} />
             </div>
@@ -791,6 +815,15 @@ export default function Students() {
                 type="email"
                 value={form.parentEmail}
                 onChange={change}
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label>Address <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Input
+                name="address"
+                value={form.address}
+                onChange={change}
+                placeholder="Residential address"
               />
             </div>
 

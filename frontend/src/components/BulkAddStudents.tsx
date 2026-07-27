@@ -29,12 +29,15 @@ interface Row {
   admissionNo: string;
   name: string;
   dateOfAdmission: string;
+  dateOfBirth: string;
   rollNo: string;
   gender: string;
   category: string;
   parentName: string;
+  motherName: string;
   parentPhone: string;
   parentEmail: string;
+  address: string;
   optedServices: string[];
   serviceFees: Record<string, string>; // service name -> amount (string, editable)
 }
@@ -42,12 +45,15 @@ const emptyRow = (date = today(), category = "General"): Row => ({
   admissionNo: "",
   name: "",
   dateOfAdmission: date,
+  dateOfBirth: "",
   rollNo: "",
   gender: "",
   category,
   parentName: "",
+  motherName: "",
   parentPhone: "",
   parentEmail: "",
+  address: "",
   optedServices: [],
   serviceFees: {},
 });
@@ -60,8 +66,10 @@ const CONTENT_FIELDS: (keyof Row)[] = [
   "rollNo",
   "gender",
   "parentName",
+  "motherName",
   "parentPhone",
   "parentEmail",
+  "address",
 ];
 const isRowUsed = (r: Row) =>
   CONTENT_FIELDS.some((f) => String(r[f]).trim() !== "");
@@ -261,12 +269,15 @@ export default function BulkAddStudents({
         class: shared.class,
         section: shared.section || undefined,
         dateOfAdmission: r.dateOfAdmission || undefined,
+        dateOfBirth: r.dateOfBirth || undefined,
         category: r.category || "General",
         rollNo: r.rollNo.trim() || undefined,
         gender: r.gender || "",
         parentName: r.parentName.trim() || undefined,
+        motherName: r.motherName.trim() || undefined,
         parentPhone: r.parentPhone.trim() || undefined,
         parentEmail: r.parentEmail.trim() || undefined,
+        address: r.address.trim() || undefined,
         optedServices: r.optedServices,
         serviceFees,
       };
@@ -504,6 +515,15 @@ export default function BulkAddStudents({
                     />
                   </div>
                   <div className="space-y-1">
+                    <span className={miniLabel}>Date of birth</span>
+                    <Input
+                      type="date"
+                      className="h-9"
+                      value={r.dateOfBirth}
+                      onChange={(e) => setRow(i, { dateOfBirth: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
                     <span className={miniLabel}>Roll no.</span>
                     <Input
                       className="h-9"
@@ -552,6 +572,14 @@ export default function BulkAddStudents({
                     />
                   </div>
                   <div className="space-y-1">
+                    <span className={miniLabel}>Mother's name</span>
+                    <Input
+                      className="h-9"
+                      value={r.motherName}
+                      onChange={(e) => setRow(i, { motherName: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
                     <span className={miniLabel}>Parent phone</span>
                     <Input
                       className="h-9"
@@ -566,6 +594,14 @@ export default function BulkAddStudents({
                       className="h-9"
                       value={r.parentEmail}
                       onChange={(e) => setRow(i, { parentEmail: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className={miniLabel}>Address</span>
+                    <Input
+                      className="h-9"
+                      value={r.address}
+                      onChange={(e) => setRow(i, { address: e.target.value })}
                     />
                   </div>
                   {optionalHeads.length > 0 && (
