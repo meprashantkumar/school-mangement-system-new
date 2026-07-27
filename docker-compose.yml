@@ -69,7 +69,27 @@ services:
       - ./rclone:/root/.config/rclone
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # Per-school branding is baked into the SPA at build time, so these come
+      # from the school env file. Change any of them -> re-run with --build.
+      args:
+        VITE_SCHOOL_NAME: ${VITE_SCHOOL_NAME:-}
+        VITE_SCHOOL_PLACE: ${VITE_SCHOOL_PLACE:-}
+        VITE_SCHOOL_FULL_NAME: ${VITE_SCHOOL_FULL_NAME:-}
+        VITE_SCHOOL_SHORT_NAME: ${VITE_SCHOOL_SHORT_NAME:-}
+        VITE_SCHOOL_MONOGRAM: ${VITE_SCHOOL_MONOGRAM:-}
+        VITE_SCHOOL_TAGLINE: ${VITE_SCHOOL_TAGLINE:-}
+        VITE_SCHOOL_INTRO: ${VITE_SCHOOL_INTRO:-}
+        VITE_SCHOOL_DIRECTOR_NAME: ${VITE_SCHOOL_DIRECTOR_NAME:-}
+        VITE_SCHOOL_DIRECTOR_ROLE: ${VITE_SCHOOL_DIRECTOR_ROLE:-}
+        VITE_SCHOOL_PRINCIPAL_NAME: ${VITE_SCHOOL_PRINCIPAL_NAME:-}
+        VITE_SCHOOL_PRINCIPAL_ROLE: ${VITE_SCHOOL_PRINCIPAL_ROLE:-}
+        VITE_SCHOOL_ADDRESS: ${VITE_SCHOOL_ADDRESS:-}
+        VITE_SCHOOL_PHONE: ${VITE_SCHOOL_PHONE:-}
+        VITE_SCHOOL_EMAIL: ${VITE_SCHOOL_EMAIL:-}
+        VITE_SCHOOL_ESTABLISHED: ${VITE_SCHOOL_ESTABLISHED:-}
+        VITE_SCHOOL_AFFILIATION: ${VITE_SCHOOL_AFFILIATION:-}
     restart: unless-stopped
     depends_on:
       - api

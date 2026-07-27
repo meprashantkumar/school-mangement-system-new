@@ -296,7 +296,7 @@ export default function Home() {
       <footer id="contact" className="scroll-mt-20 border-t bg-brand-ink text-white/80">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-3">
           <div>
-            <BrandMark tone="onDark" onDark subtitle="Garhwa, Jharkhand" />
+            <BrandMark tone="onDark" onDark subtitle={SCHOOL.address} />
             <p className="mt-4 max-w-sm text-sm text-white/60">{SCHOOL.tagline}</p>
           </div>
 
