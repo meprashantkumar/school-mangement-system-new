@@ -3,6 +3,60 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 /**
+ * The few branding values needed outside React — in the manifest and in the raw
+ * index.html. Defaults mirror src/lib/school.ts so both agree.
+ */
+const schoolBrand = (env: Record<string, string>) => {
+  const pick = (v: string | undefined, fallback: string) => (v && v.trim()) || fallback;
+  const name = pick(env.VITE_SCHOOL_NAME, "R K Public School");
+  const place = pick(env.VITE_SCHOOL_PLACE, "Garhwa");
+  return {
+    name,
+    place,
+    shortName: pick(env.VITE_SCHOOL_SHORT_NAME, "RKPS"),
+    fullName: pick(env.VITE_SCHOOL_FULL_NAME, place ? `${name}, ${place}` : name),
+  };
+};
+
+/**
+ * Rewrites the branding baked into index.html itself: the <title>, the meta
+ * description, and the iOS home-screen label.
+ *
+ * main.tsx already sets these from the same env values, but only once React has
+ * booted. The raw HTML is what a WhatsApp link preview and a search engine read,
+ * and it is what shows in the tab for the first moment of every page load — so
+ * without this every school on a box served the first school's name.
+ */
+const schoolHtml = (env: Record<string, string>): Plugin => {
+  const brand = schoolBrand(env);
+  // These end up inside a double-quoted attribute and an element's text.
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const description =
+    `${brand.fullName} — parent & staff portal for fees, receipts and school updates.`;
+
+  return {
+    name: "sfms-school-html",
+    // "pre" so the values are in place before Vite's own HTML handling runs.
+    transformIndexHtml: {
+      order: "pre",
+      handler(html) {
+        return html
+          .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(brand.fullName)}</title>`)
+          .replace(
+            /<meta\s+name="description"\s+content="[\s\S]*?"\s*\/?>/,
+            `<meta name="description" content="${esc(description)}" />`
+          )
+          .replace(
+            /<meta\s+name="apple-mobile-web-app-title"\s+content="[\s\S]*?"\s*\/?>/,
+            `<meta name="apple-mobile-web-app-title" content="${esc(brand.shortName)}" />`
+          );
+      },
+    },
+  };
+};
+
+/**
  * Emits the PWA manifest so staff can install the site as an app: one icon on the
  * home screen, opening with no browser address bar (display: "standalone").
  *
@@ -16,10 +70,11 @@ import path from "path";
  */
 const pwaManifest = (env: Record<string, string>): Plugin => {
   const pick = (v: string | undefined, fallback: string) => (v && v.trim()) || fallback;
+  const brand = schoolBrand(env);
   const manifest = {
     id: "/",
-    name: pick(env.VITE_SCHOOL_NAME, "R K Public School"),
-    short_name: pick(env.VITE_SCHOOL_SHORT_NAME, "RKPS"),
+    name: brand.name,
+    short_name: brand.shortName,
     description: pick(env.VITE_SCHOOL_TAGLINE, "Nurturing knowledge, character & confidence."),
     // Land on /login: when already signed in it redirects straight to the dashboard
     // for that role, so a teacher goes icon -> attendance with nothing to type.
@@ -60,7 +115,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
   return {
-    plugins: [react(), pwaManifest(env)],
+    plugins: [react(), schoolHtml(env), pwaManifest(env)],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
