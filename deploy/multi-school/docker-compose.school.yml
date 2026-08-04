@@ -26,7 +26,9 @@ services:
       # Shared mongod, own database. DB_NAME MUST differ per school: point two
       # schools at the same name and they silently share one set of students.
       MONGO_URI: mongodb://${MONGO_USER:?}:${MONGO_PASS:?}@sfms-mongo:27017/${DB_NAME:?set a UNIQUE DB_NAME per school}?authSource=admin
-      JWT_SECRET: ${JWT_SECRET:?generate one per school: openssl rand -hex 32}
+      # No ": " anywhere in these :? messages — YAML reads colon-space inside an
+      # unquoted value as the start of a new key and refuses to parse the file.
+      JWT_SECRET: ${JWT_SECRET:?generate one per school with openssl rand -hex 32}
       JWT_EXPIRE: ${JWT_EXPIRE:-7d}
       CLIENT_URL: ${CLIENT_URL:?set the school's https:// URL}
       SCHOOL_NAME: ${SCHOOL_NAME}
