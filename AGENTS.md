@@ -157,6 +157,27 @@ Because most parents have no email:
 - **Staff whose own child studies here** keep one login for both roles: role resolves to `teacher`
   and a "My child" tab shows that child's fees.
 
+### How long a session lasts, and how to end one
+
+Session length is **per role**, in `server/src/utils/token.ts`: superadmin `7d`, admin `30d`, teacher
+`180d`, parent/student `365d`. A teacher opens the installed app every morning to take attendance, and
+cannot reset their own password without the office, so being logged out mid-term is a real cost;
+a superadmin can export every record, so that session stays short. `JWT_EXPIRE` in the env files is
+**only the fallback** for a role missing from that table — it does not override it.
+
+Year-long sessions are only safe because both off-switches take effect on the next request:
+
+- **Revoke the login** (`/api/access/...`) **deletes the `User`**, and `protect` re-reads the user from
+  the database on every request, so the token dies immediately. That lookup is not redundant.
+- **Setting a new password stamps `passwordChangedAt`**, and `protect` rejects any token issued before
+  it. This is the "log out everywhere" for a lost phone — the office's existing "set a new password"
+  button already does it, no separate action.
+
+Two things to leave alone: `passwordChangedAt` is stored **one second in the past** (a JWT's `iat` is
+whole seconds rounded down, so a token minted in the same second would otherwise be rejected the moment
+it was issued — and password reset returns a token, so that path would break outright); and it is
+**not** set for a brand-new account, which has no sessions to invalidate.
+
 ### Never write an ownership check by hand
 
 Use the shared helpers. This has caused two real data-leak bugs.

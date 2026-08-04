@@ -84,7 +84,7 @@ export const register = asyncHandler(async (req, res) => {
   }
 
   res.status(201).json({
-    token: generateToken(user.id),
+    token: generateToken(user.id, user.role),
     user: formatUser(user),
   });
 });
@@ -135,7 +135,7 @@ export const login = asyncHandler(async (req, res) => {
   logAudit(req, AUDIT.LOGIN, `${user.name} (${user.role}) logged in`, { actor: user });
 
   res.json({
-    token: generateToken(user.id),
+    token: generateToken(user.id, user.role),
     user: formatUser(user),
   });
 });
@@ -207,5 +207,8 @@ export const resetPassword = asyncHandler(async (req, res) => {
   user.resetPasswordExpire = undefined;
   await user.save();
 
-  res.json({ message: "Password updated. You can now log in.", token: generateToken(user.id) });
+  res.json({
+    message: "Password updated. You can now log in.",
+    token: generateToken(user.id, user.role),
+  });
 });
