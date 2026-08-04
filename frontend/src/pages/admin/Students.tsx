@@ -13,6 +13,7 @@ import {
   Download,
   Upload,
   Users,
+  KeyRound,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -24,6 +25,8 @@ import { formatINR } from "@/lib/utils";
 import { toCSV, parseCSV, downloadFile } from "@/lib/csv";
 import PromoteStudentsDialog from "@/components/PromoteStudentsDialog";
 import BulkAddStudents from "@/components/BulkAddStudents";
+import GiveAccessDialog, { type AccessTarget } from "@/components/GiveAccessDialog";
+import BulkAccessDialog from "@/components/BulkAccessDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -103,6 +106,8 @@ export default function Students() {
   const [reloadKey, setReloadKey] = useState(0);
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [accessTarget, setAccessTarget] = useState<AccessTarget | null>(null);
+  const [bulkAccessOpen, setBulkAccessOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [optedServices, setOptedServices] = useState<string[]>([]);
@@ -443,6 +448,10 @@ export default function Students() {
             <Users className="h-4 w-4" />
             Bulk add
           </Button>
+          <Button variant="outline" onClick={() => setBulkAccessOpen(true)}>
+            <KeyRound className="h-4 w-4" />
+            Give class access
+          </Button>
           <Button onClick={openAdd}>
             <Plus className="h-4 w-4" />
             Add Student
@@ -632,6 +641,27 @@ export default function Students() {
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => openEdit(s)} title="Edit">
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={s.parent ? "text-emerald-600 hover:text-emerald-700" : ""}
+                      onClick={() =>
+                        setAccessTarget({
+                          kind: "student",
+                          id: s._id,
+                          name: s.name,
+                          phone: s.parentPhone,
+                          hasLogin: !!s.parent,
+                        })
+                      }
+                      title={
+                        s.parent
+                          ? "Parent can log in — reset password or remove access"
+                          : "Give dashboard access to the parent"
+                      }
+                    >
+                      <KeyRound className="h-4 w-4" />
                     </Button>
                     {s.status === "left" ? (
                       <Button
@@ -884,6 +914,20 @@ export default function Students() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Dashboard access for a parent (single student) */}
+      <GiveAccessDialog
+        target={accessTarget}
+        onClose={() => setAccessTarget(null)}
+        onDone={fetchStudents}
+      />
+
+      {/* Dashboard access for a whole class */}
+      <BulkAccessDialog
+        open={bulkAccessOpen}
+        onOpenChange={setBulkAccessOpen}
+        onDone={fetchStudents}
+      />
 
       {/* Bulk add students */}
       <BulkAddStudents

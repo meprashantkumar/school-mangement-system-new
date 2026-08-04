@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import { normalizePhone } from "../utils/phone";
 
 // A class+section this teacher is class-teacher of, for a given session.
 export interface IAssignment {
@@ -9,7 +10,7 @@ export interface IAssignment {
 
 export interface ITeacher extends Document {
   name: string;
-  email: string;
+  email?: string; // optional — mobile number is the login ID
   phone?: string;
   gender?: string;
   designation?: string; // e.g. subject / "PGT Maths"
@@ -34,8 +35,10 @@ const assignmentSchema = new Schema<IAssignment>(
 const teacherSchema = new Schema<ITeacher>(
   {
     name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    phone: { type: String, trim: true },
+    // Optional: teachers log in with their mobile number, and many have no email.
+    email: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
+    // Their login ID — stored normalised so it always matches what's typed.
+    phone: { type: String, trim: true, unique: true, sparse: true },
     gender: { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
     designation: { type: String, trim: true },
     employeeCode: { type: String, trim: true },
@@ -46,5 +49,18 @@ const teacherSchema = new Schema<ITeacher>(
   },
   { timestamps: true }
 );
+
+// Blank strings would collide on the sparse unique indexes ("" is a real value),
+// and the phone is a login ID so it must be stored in one canonical form.
+teacherSchema.pre("validate", function (next) {
+  const self = this as unknown as ITeacher;
+  if (!self.email || !String(self.email).trim()) self.email = undefined;
+  const phone = normalizePhone(self.phone);
+  self.phone = phone || undefined;
+  if (!self.email && !self.phone) {
+    return next(new Error("A teacher needs a mobile number or an email"));
+  }
+  next();
+});
 
 export const Teacher = mongoose.model<ITeacher>("Teacher", teacherSchema);

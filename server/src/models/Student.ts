@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 import { CURRENT_SESSION } from "../utils/academics";
+import { normalizePhone } from "../utils/phone";
 
 // A snapshot of where a student sat in a past academic session. Promotion
 // pushes the current position here before advancing, so history is preserved.
@@ -97,6 +98,11 @@ studentSchema.pre("save", function (next) {
   if (this.serviceFees?.length) {
     const opted = new Set(this.optedServices || []);
     this.serviceFees = this.serviceFees.filter((f) => opted.has(f.name));
+  }
+  // The parent's mobile number doubles as their login ID, so store it in one
+  // canonical form ("+91 98765-43210" and "9876543210" must match).
+  if (this.parentPhone) {
+    this.parentPhone = normalizePhone(this.parentPhone) || this.parentPhone;
   }
   next();
 });

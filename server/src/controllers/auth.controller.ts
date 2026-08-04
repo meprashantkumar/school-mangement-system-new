@@ -8,6 +8,7 @@ import { generateToken } from "../utils/token";
 import { logAudit, AUDIT } from "../utils/audit";
 import { sendMail } from "../config/mailer";
 import { env } from "../config/env";
+import { looksLikePhone, normalizePhone } from "../utils/phone";
 
 // A self-signing-up user becomes a "teacher" if the admin has already added a
 // teacher record with their email; otherwise a "parent". Never elevates to
@@ -40,6 +41,18 @@ const formatUser = (user: IUser) => ({
   role: user.role,
   createdAt: user.createdAt,
 });
+
+// Find the account for whatever the user typed in the single login box: a mobile
+// number (the usual case — most parents have no email) or an email address.
+const findByIdentifier = async (raw: string) => {
+  const typed = String(raw).trim();
+  if (looksLikePhone(typed)) {
+    return User.findOne({ phone: normalizePhone(typed) }).select("+password");
+  }
+  // Query filters don't run schema setters, so normalise the email here to match
+  // how it was stored.
+  return User.findOne({ email: typed.toLowerCase() }).select("+password");
+};
 
 // POST /api/auth/register  (public sign-up creates a parent account)
 export const register = asyncHandler(async (req, res) => {
@@ -78,25 +91,37 @@ export const register = asyncHandler(async (req, res) => {
 
 // POST /api/auth/login
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  // `identifier` is the mobile-or-email field; `email` is accepted too so older
+  // clients keep working.
+  const { identifier, email, password } = req.body;
+  const typed = identifier || email;
 
-  if (!email || !password) {
-    throw new ApiError(400, "Please provide email and password");
+  if (!typed || !password) {
+    throw new ApiError(400, "Please provide your mobile number (or email) and password");
   }
 
-  // Normalise exactly like register/forgot-password (schema lowercases on write,
-  // but query filters don't run setters — so a capitalised/space-padded email
-  // typed at login must be normalised here to match the stored address).
-  const user = await User.findOne({ email: String(email).toLowerCase().trim() }).select("+password");
+  const user = await findByIdentifier(typed);
   if (!user || !(await user.matchPassword(password))) {
-    throw new ApiError(401, "Invalid email or password");
+    throw new ApiError(401, "Invalid mobile number / email or password");
   }
 
   // Reconcile: a parent who was later added as a teacher becomes a teacher on
   // next login (covers "registered before admin added them"). Never touches
-  // admin/superadmin.
+  // admin/superadmin. Matched on the ID link first, then email/phone for records
+  // created before the login existed.
   if (user.role === "parent") {
-    const teacher = await Teacher.findOne({ email: user.email, isActive: true });
+    const teacher = await Teacher.findOne({
+      $and: [
+        { isActive: true },
+        {
+          $or: [
+            { user: user._id },
+            ...(user.email ? [{ email: user.email }] : []),
+            ...(user.phone ? [{ phone: user.phone }] : []),
+          ],
+        },
+      ],
+    });
     if (teacher) {
       user.role = "teacher";
       await user.save({ validateBeforeSave: false });
@@ -124,11 +149,22 @@ export const getMe = asyncHandler(async (req, res) => {
 // Emails a time-limited reset link. Responds the same whether or not the email
 // exists, so we don't reveal which addresses are registered.
 export const forgotPassword = asyncHandler(async (req, res) => {
-  const { email } = req.body;
-  if (!email) throw new ApiError(400, "Email is required");
+  const { identifier, email } = req.body;
+  const typed = identifier || email;
+  if (!typed) throw new ApiError(400, "Enter your mobile number or email");
 
-  const user = await User.findOne({ email: String(email).toLowerCase().trim() });
-  if (user) {
+  // Phone-only accounts (most parents/teachers) have no inbox to send a link to,
+  // so self-service reset isn't possible — the school office sets a new password.
+  // We answer without looking anything up, so this never reveals who has an account.
+  if (looksLikePhone(typed)) {
+    return res.json({
+      message:
+        "Accounts that log in with a mobile number can't be reset by email. Please contact the school office and they'll set a new password for you.",
+    });
+  }
+
+  const user = await User.findOne({ email: String(typed).toLowerCase().trim() });
+  if (user?.email) {
     const rawToken = crypto.randomBytes(32).toString("hex");
     user.resetPasswordToken = crypto.createHash("sha256").update(rawToken).digest("hex");
     user.resetPasswordExpire = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes

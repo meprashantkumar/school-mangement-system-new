@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +19,7 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(identifier, password);
       toast.success("Logged in successfully");
       navigate(landingPath(user.role));
     } catch (err: any) {
@@ -40,15 +40,21 @@ export default function Login() {
 
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="identifier">Mobile number</Label>
           <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            id="identifier"
+            // Not type="tel" — staff sign in with an email here too.
+            inputMode="text"
+            autoComplete="username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="10-digit mobile number"
             required
           />
+          <p className="text-xs text-muted-foreground">
+            Use the mobile number the school has on record. Staff with an email can use that
+            instead.
+          </p>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -75,7 +81,11 @@ export default function Login() {
       </form>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
-        Don't have an account?{" "}
+        No login yet? Please contact the school office — they'll set up your mobile number and
+        password.
+      </p>
+      <p className="mt-2 text-center text-sm text-muted-foreground">
+        Have a school email instead?{" "}
         <Link to="/register" className="font-medium text-primary hover:underline">
           Register
         </Link>

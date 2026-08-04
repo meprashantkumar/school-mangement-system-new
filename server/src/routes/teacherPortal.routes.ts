@@ -15,6 +15,10 @@ import {
   teacherListExams,
 } from "../controllers/exam.controller";
 import { getMyTeacherTimetable } from "../controllers/timetable.controller";
+import {
+  getMyChildren,
+  getMyChildrenInvoices,
+} from "../controllers/teacherChildren.controller";
 
 const router = Router();
 
@@ -36,5 +40,9 @@ router.delete("/marks", clearMarkTeacher);
 
 // My weekly teaching timetable (derived from the class timetables)
 router.get("/timetable", getMyTeacherTimetable);
+
+// My own children, for staff whose child studies at the school
+router.get("/children", getMyChildren);
+router.get("/children/invoices", getMyChildrenInvoices);
 
 export default router;

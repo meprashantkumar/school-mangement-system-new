@@ -48,4 +48,5 @@ export const AUDIT = {
   VOID: "Void/Reverse",
   RESTORE: "Restore",
   BACKUP: "Backup",
+  ACCESS: "Dashboard access",
 } as const;

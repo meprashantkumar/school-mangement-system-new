@@ -142,6 +142,7 @@ export interface Student {
   parentPhone?: string;
   parentEmail?: string;
   address?: string;
+  parent?: string; // linked parent login (User id) — set when the office grants access
   optedServices?: string[];
   serviceFees?: { name: string; amount: number }[];
   creditBalance?: number;

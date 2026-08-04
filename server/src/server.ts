@@ -2,10 +2,18 @@ import { app } from "./app";
 import { env } from "./config/env";
 import { connectDB } from "./config/db";
 import { ensureSuperAdmin } from "./config/seedSuperAdmin";
+import { ensureUserIndexes } from "./utils/ensureUserIndexes";
+import { normalizeStoredPhones } from "./utils/normalizeStoredPhones";
 import { runLateFeeSweep } from "./utils/lateFee";
 
 const start = async () => {
   await connectDB();
+  // Must run before any user is created: rebuilds the login-identifier indexes
+  // so accounts without an email (phone-only parents) don't collide.
+  await ensureUserIndexes();
+  // Mobile numbers are login IDs, so store them all in one canonical form —
+  // otherwise a parent logs in but matches none of their children.
+  await normalizeStoredPhones();
   await ensureSuperAdmin();
 
   // Apply auto late fees on boot, then re-check periodically while running.

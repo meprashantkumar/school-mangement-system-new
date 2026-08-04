@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Search, Pencil, Trash2, Contact, Download, Upload, X } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Contact, Download, Upload, X, KeyRound } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Teacher } from "@/types";
 import { CLASSES, SECTIONS, classLabel } from "@/lib/constants";
 import { toCSV, parseCSV, downloadFile } from "@/lib/csv";
+import GiveAccessDialog, { type AccessTarget } from "@/components/GiveAccessDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,6 +60,7 @@ export default function Teachers() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [accessTarget, setAccessTarget] = useState<AccessTarget | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTeachers = async () => {
@@ -110,6 +112,9 @@ export default function Teachers() {
     setSaving(true);
     const payload = {
       ...form,
+      // Email is optional now — send undefined rather than "" so it isn't stored
+      // as a blank value (which would clash on the unique index).
+      email: form.email.trim() || undefined,
       joiningDate: form.joiningDate || undefined,
       assignments: assignments.filter((a) => a.class && a.section),
     };
@@ -313,14 +318,35 @@ export default function Teachers() {
                   </TableCell>
                   <TableCell>
                     {t.user ? (
-                      <Badge status="active">Signed up</Badge>
+                      <Badge status="active">Can log in</Badge>
                     ) : (
-                      <span className="text-xs text-muted-foreground">Not yet</span>
+                      <span className="text-xs text-muted-foreground">No login</span>
                     )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(t)} title="Edit">
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={t.user ? "text-emerald-600 hover:text-emerald-700" : ""}
+                      onClick={() =>
+                        setAccessTarget({
+                          kind: "teacher",
+                          id: t._id,
+                          name: t.name,
+                          phone: t.phone,
+                          hasLogin: !!t.user,
+                        })
+                      }
+                      title={
+                        t.user
+                          ? "Can log in — reset password or remove access"
+                          : "Give dashboard access"
+                      }
+                    >
+                      <KeyRound className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -351,19 +377,28 @@ export default function Teachers() {
               <Input name="name" value={form.name} onChange={change} required />
             </div>
             <div className="space-y-1.5">
-              <Label>Email (their login)</Label>
+              <Label>
+                Mobile number <span className="text-xs text-muted-foreground">(their login)</span>
+              </Label>
+              <Input
+                name="phone"
+                value={form.phone}
+                onChange={change}
+                placeholder="10-digit mobile number"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                Email <span className="text-xs text-muted-foreground">(optional)</span>
+              </Label>
               <Input
                 name="email"
                 type="email"
                 value={form.email}
                 onChange={change}
                 disabled={!!editingId}
-                required
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Phone</Label>
-              <Input name="phone" value={form.phone} onChange={change} />
             </div>
             <div className="space-y-1.5">
               <Label>Designation</Label>
@@ -448,6 +483,13 @@ export default function Teachers() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Dashboard access for a teacher */}
+      <GiveAccessDialog
+        target={accessTarget}
+        onClose={() => setAccessTarget(null)}
+        onDone={fetchTeachers}
+      />
     </div>
   );
 }

@@ -18,7 +18,8 @@ interface RegisterPayload {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  /** `identifier` is a mobile number or an email address. */
+  login: (identifier: string, password: string) => Promise<User>;
   register: (payload: RegisterPayload) => Promise<User>;
   logout: () => void;
 }
@@ -46,8 +47,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { data } = await api.post("/auth/login", { email, password });
+  const login = async (identifier: string, password: string) => {
+    const { data } = await api.post("/auth/login", { identifier, password });
     localStorage.setItem("token", data.token);
     setUser(data.user);
     return data.user as User;

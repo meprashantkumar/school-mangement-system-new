@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError";
 import { Teacher, IAssignment } from "../models/Teacher";
 import { User } from "../models/User";
 import { CURRENT_SESSION } from "../utils/academics";
+import { normalizePhone } from "../utils/phone";
 import { logAudit, AUDIT } from "../utils/audit";
 import { moveToTrash } from "./trash.controller";
 
@@ -63,22 +64,42 @@ export const getTeachers = asyncHandler(async (req, res) => {
 // POST /api/teachers
 export const createTeacher = asyncHandler(async (req, res) => {
   const { name, email } = req.body;
-  if (!name || !email) throw new ApiError(400, "Name and email are required");
+  // Mobile number is the login ID, so that's what we insist on; email is optional
+  // (many teachers don't have one). Either identifies them uniquely.
+  const phone = normalizePhone(req.body.phone);
+  if (!name) throw new ApiError(400, "Name is required");
+  if (!phone && !email) {
+    throw new ApiError(400, "A mobile number is required (email is optional)");
+  }
+  if (req.body.phone && !phone) {
+    throw new ApiError(400, "That mobile number doesn't look right");
+  }
 
-  const normalisedEmail = String(email).toLowerCase().trim();
-  const exists = await Teacher.findOne({ email: normalisedEmail });
-  if (exists) throw new ApiError(400, "A teacher with this email already exists");
+  const normalisedEmail = email ? String(email).toLowerCase().trim() : undefined;
+  if (phone) {
+    const byPhone = await Teacher.findOne({ phone });
+    if (byPhone) throw new ApiError(400, `${byPhone.name} already uses the mobile number ${phone}`);
+  }
+  if (normalisedEmail) {
+    const exists = await Teacher.findOne({ email: normalisedEmail });
+    if (exists) throw new ApiError(400, "A teacher with this email already exists");
+  }
 
   const assignments = normaliseAssignments(req.body.assignments);
   await assertAssignmentsFree(assignments);
 
-  // If a login already exists with this email, link it.
-  const existingUser = await User.findOne({ email: normalisedEmail });
+  // If a login already exists on this mobile/email, link it.
+  const existingUser = await User.findOne({
+    $or: [
+      ...(phone ? [{ phone }] : []),
+      ...(normalisedEmail ? [{ email: normalisedEmail }] : []),
+    ],
+  });
 
   const teacher = await Teacher.create({
     name: String(name).trim(),
     email: normalisedEmail,
-    phone: req.body.phone,
+    phone,
     gender: GENDERS.includes(req.body.gender) ? req.body.gender : "",
     designation: req.body.designation,
     employeeCode: req.body.employeeCode,
@@ -93,7 +114,7 @@ export const createTeacher = asyncHandler(async (req, res) => {
     await existingUser.save({ validateBeforeSave: false });
   }
 
-  logAudit(req, AUDIT.TEACHER, `Added teacher ${teacher.name} (${teacher.email})`, {
+  logAudit(req, AUDIT.TEACHER, `Added teacher ${teacher.name} (${teacher.phone || teacher.email})`, {
     entity: "Teacher",
     entityId: String(teacher._id),
   });
