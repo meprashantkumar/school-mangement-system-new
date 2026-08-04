@@ -92,8 +92,13 @@ export default function Collect() {
       const { data } = await api.get("/payments", { params: { student: id } });
       const list: Payment[] = data.payments || [];
       setPayments(list);
+      // A cheque with no status at all was recorded before cheques started being
+      // marked "pending" on creation. Treat it as pending, or those older cheques
+      // could never be cleared or bounced.
       setPendingCheques(
-        list.filter((p) => p.mode === "cheque" && p.chequeStatus === "pending" && !p.voided)
+        list.filter(
+          (p) => p.mode === "cheque" && (p.chequeStatus ?? "pending") === "pending" && !p.voided
+        )
       );
     } catch {
       setPayments([]);
@@ -531,7 +536,7 @@ export default function Collect() {
                           ? ` · ${new Date(p.createdAt).toLocaleDateString("en-IN")}`
                           : ""}
                       </span>
-                      {p.mode === "cheque" && p.chequeStatus && (
+                      {p.mode === "cheque" && (
                         <Badge
                           status={
                             p.chequeStatus === "cleared"
@@ -542,7 +547,8 @@ export default function Collect() {
                           }
                           className="ml-2"
                         >
-                          {p.chequeStatus}
+                          {/* No status means it predates cheques being marked pending. */}
+                          {p.chequeStatus ?? "pending"}
                         </Badge>
                       )}
                     </span>

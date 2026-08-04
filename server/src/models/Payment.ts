@@ -75,6 +75,19 @@ const paymentSchema = new Schema<IPayment>(
   { timestamps: true }
 );
 
+// A cheque is money in transit until the bank clears it, so it starts "pending".
+// Nothing used to set this, and the office's "Cheques awaiting clearance" list is
+// built by filtering on exactly that value — so the list was always empty, the card
+// holding the only Cleared / Bounced buttons never appeared, and a bounced cheque
+// could not be reversed anywhere in the app.
+//
+// Enforced on the model rather than at the call site so it holds for every way a
+// payment can be created.
+paymentSchema.pre("validate", function (next) {
+  if (this.mode === "cheque" && !this.chequeStatus) this.chequeStatus = "pending";
+  next();
+});
+
 // One Payment per Razorpay payment id — blocks replay/double-credit of the same
 // gateway payment. Sparse so counter payments (no id) aren't affected.
 paymentSchema.index(
