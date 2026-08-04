@@ -4,20 +4,14 @@ import { ApiError } from "../utils/ApiError";
 import { Attendance } from "../models/Attendance";
 import { Holiday } from "../models/Holiday";
 import { Student } from "../models/Student";
-import { Teacher, ITeacher } from "../models/Teacher";
+import { ITeacher } from "../models/Teacher";
 import { CURRENT_SESSION } from "../utils/academics";
 import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
+import { teacherForUser } from "../utils/teacherForUser";
 import { logAudit, AUDIT } from "../utils/audit";
 import { Request } from "express";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
-
-// The teacher record for the logged-in user (matched by email, like parents).
-const teacherForUser = async (req: Request): Promise<ITeacher> => {
-  const teacher = await Teacher.findOne({ email: req.user!.email, isActive: true });
-  if (!teacher) throw new ApiError(403, "No teacher profile is linked to your account");
-  return teacher;
-};
 
 const isAssigned = (teacher: ITeacher, cls: string, section: string) =>
   teacher.assignments.some(

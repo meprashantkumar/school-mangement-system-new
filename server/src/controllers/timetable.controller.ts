@@ -9,6 +9,8 @@ import { Student } from "../models/Student";
 import { Holiday } from "../models/Holiday";
 import { CURRENT_SESSION } from "../utils/academics";
 import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
+import { findChildren } from "../utils/children";
+import { teacherForUser } from "../utils/teacherForUser";
 import { logAudit, AUDIT } from "../utils/audit";
 
 const WEEKDAY_NAMES = [
@@ -261,8 +263,7 @@ export const getTeacherTimetableAdmin = asyncHandler(async (req, res) => {
 
 // GET /api/teacher/timetable  (the logged-in teacher's own schedule)
 export const getMyTeacherTimetable = asyncHandler(async (req, res) => {
-  const teacher = await Teacher.findOne({ email: req.user!.email });
-  if (!teacher) throw new ApiError(403, "No teacher profile is linked to your account.");
+  const teacher = await teacherForUser(req);
   const session = String(req.query.session || CURRENT_SESSION).trim();
   const [config, entries] = await Promise.all([
     ensureConfig(),
@@ -325,7 +326,7 @@ export const saveExamTimetable = asyncHandler(async (req, res) => {
 
 // GET /api/portal/timetable  — each child's weekly class timetable.
 export const getMyTimetable = asyncHandler(async (req, res) => {
-  const students = await Student.find({ parentEmail: req.user!.email }).sort({ name: 1 });
+  const students = await findChildren(req.user!);
   const config = await ensureConfig();
   const items = [];
   for (const s of students) {
@@ -343,7 +344,7 @@ export const getMyTimetable = asyncHandler(async (req, res) => {
 
 // GET /api/portal/exam-timetable  — date sheets for each child's class.
 export const getMyExamTimetable = asyncHandler(async (req, res) => {
-  const students = await Student.find({ parentEmail: req.user!.email }).sort({ name: 1 });
+  const students = await findChildren(req.user!);
   const items = [];
   for (const s of students) {
     const sheets = await ExamTimetable.find({ class: s.class, session: s.session })

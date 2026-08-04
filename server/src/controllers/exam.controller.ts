@@ -5,10 +5,11 @@ import { Exam, IExam, IExamSubject } from "../models/Exam";
 import { Mark } from "../models/Mark";
 import { Subject } from "../models/Subject";
 import { Student, IStudent } from "../models/Student";
-import { Teacher, ITeacher } from "../models/Teacher";
+import { ITeacher } from "../models/Teacher";
 import { Trash } from "../models/Trash";
 import { CURRENT_SESSION } from "../utils/academics";
 import { defaultPassMarks, defaultWeightFor, round2 } from "../utils/exams";
+import { teacherForUser } from "../utils/teacherForUser";
 import { logAudit, AUDIT } from "../utils/audit";
 
 // ---------------------------------------------------------------------------
@@ -17,13 +18,6 @@ import { logAudit, AUDIT } from "../utils/audit";
 
 const EXAM_TYPE_VALUES = ["unit", "halfyearly", "annual", "other"];
 const normType = (t: unknown) => (EXAM_TYPE_VALUES.includes(String(t)) ? String(t) : "other");
-
-// The teacher record for the logged-in user (matched by email, like parents).
-const teacherForUser = async (req: Request): Promise<ITeacher> => {
-  const teacher = await Teacher.findOne({ email: req.user!.email, isActive: true });
-  if (!teacher) throw new ApiError(403, "No teacher profile is linked to your account");
-  return teacher;
-};
 
 const isAssigned = (teacher: ITeacher, cls: string, section: string) =>
   teacher.assignments.some(
