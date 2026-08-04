@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LogOut,
-  CreditCard,
+  // CreditCard,          // ← online payment (disabled, see below)
   Receipt,
   Info,
   CalendarClock,
@@ -12,9 +12,25 @@ import {
   FileText,
   ChevronDown,
 } from "lucide-react";
-import toast from "react-hot-toast";
+// import toast from "react-hot-toast";   // ← only used by the payment flow
 import api from "@/lib/api";
-import { payInvoiceOnline } from "@/lib/pay";
+// import { payInvoiceOnline } from "@/lib/pay";
+
+/* -----------------------------------------------------------------------------
+ * ONLINE PAYMENT IS TURNED OFF IN THE PARENT PORTAL (school's decision).
+ *
+ * The payment gateway adds a 2.5% convenience fee on every online payment, and
+ * the school doesn't want parents paying it — fees are collected at the office
+ * instead (cash / cheque / the school's UPI QR, none of which carry a charge).
+ *
+ * Only the FRONTEND is switched off. The backend still has the Razorpay routes,
+ * ONLINE_PLATFORM_FEE_PCT, and the ownership checks, so nothing needs
+ * redeploying on the server side to bring this back.
+ *
+ * To re-enable: uncomment the three imports above, then the four blocks below
+ * marked "ONLINE PAYMENT". They are the paying state, the fee helpers, the pay()
+ * function, the "Good to know" bullets, and the Pay button.
+ * -------------------------------------------------------------------------- */
 import { useAuth } from "@/context/AuthContext";
 import type { AppConfig, Invoice, Payment, PortalStudentResult } from "@/types";
 import { formatINR, cn } from "@/lib/utils";
@@ -41,7 +57,7 @@ export default function Portal() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [results, setResults] = useState<PortalStudentResult[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [paying, setPaying] = useState<string | null>(null);
+  // ONLINE PAYMENT (1/5) — const [paying, setPaying] = useState<string | null>(null);
   const [hasTimetable, setHasTimetable] = useState(false);
   // The fee notes are worth a whole screen on a phone, so they start folded
   // there and stay open on the roomier desktop layout.
@@ -73,10 +89,11 @@ export default function Portal() {
       .catch(() => {});
   }, []);
 
-  const platformFeePct = config?.onlinePlatformFeePct ?? 2.5;
+  // ONLINE PAYMENT (2/5) — the convenience fee shown to parents.
+  // const platformFeePct = config?.onlinePlatformFeePct ?? 2.5;
   // Convenience fee = a % of the amount paid, rounded up to the rupee — must match
   // the server's platformFeeFor() so the amount shown is exactly what's charged.
-  const feeFor = (amount: number) => Math.ceil((amount * platformFeePct) / 100);
+  // const feeFor = (amount: number) => Math.ceil((amount * platformFeePct) / 100);
   const lateFeePerDay = config?.lateFeePerDay ?? 0;
   const schoolName = config?.schoolName || "School";
 
@@ -84,22 +101,23 @@ export default function Portal() {
   const isOverdue = (inv: Invoice) =>
     inv.dueAmount > 0 && !!inv.dueDate && new Date(inv.dueDate) < new Date();
 
-  const pay = async (inv: Invoice) => {
-    setPaying(inv._id);
-    try {
-      await payInvoiceOnline(inv._id, inv.dueAmount, {
-        name: user?.name,
-        email: user?.email,
-        phone: user?.phone,
-      });
-      toast.success("Payment successful");
-      await load();
-    } catch (err: any) {
-      toast.error(err?.message || "Payment failed");
-    } finally {
-      setPaying(null);
-    }
-  };
+  // ONLINE PAYMENT (3/5) — opens Razorpay checkout for one invoice.
+  // const pay = async (inv: Invoice) => {
+  //   setPaying(inv._id);
+  //   try {
+  //     await payInvoiceOnline(inv._id, inv.dueAmount, {
+  //       name: user?.name,
+  //       email: user?.email,
+  //       phone: user?.phone,
+  //     });
+  //     toast.success("Payment successful");
+  //     await load();
+  //   } catch (err: any) {
+  //     toast.error(err?.message || "Payment failed");
+  //   } finally {
+  //     setPaying(null);
+  //   }
+  // };
 
   const duesPages = Math.max(1, Math.ceil(invoices.length / DUES_PER_PAGE));
   const safeDuesPage = Math.min(duesPage, duesPages);
@@ -202,6 +220,12 @@ export default function Portal() {
             <CardContent className="p-4 pt-0 text-sm">
               <ul className="ml-5 list-disc space-y-1.5 text-muted-foreground">
                 <li>
+                  <span className="font-medium text-foreground">Fees are paid at the school office</span>{" "}
+                  — by cash, cheque, or by scanning the school's UPI QR at the fee counter. A receipt
+                  is issued there and appears in your payment history below.
+                </li>
+                {/* ONLINE PAYMENT (4/5) — the two bullets explaining the convenience fee.
+                <li>
                   <span className="font-medium text-foreground">Pay online</span> using UPI, card, net
                   banking or wallet — a convenience fee of{" "}
                   <span className="font-medium text-foreground">{platformFeePct}%</span> applies
@@ -211,6 +235,7 @@ export default function Portal() {
                   To <span className="font-medium text-foreground">avoid the convenience fee</span>, pay
                   by cash, cheque, or by scanning the school's UPI QR at the fee counter.
                 </li>
+                */}
                 {lateFeePerDay > 0 && (
                   <li>
                     A{" "}
@@ -309,6 +334,17 @@ export default function Portal() {
                       </div>
 
                       {inv.dueAmount > 0 ? (
+                        /* ONLINE PAYMENT (5/5) — the Pay button. Replaced with a line
+                           pointing parents at the fee counter so the card isn't a
+                           dead end. Delete this <p> when re-enabling the block below. */
+                        <p className="flex items-start gap-1.5 rounded-md bg-muted/40 p-2.5 text-sm text-muted-foreground">
+                          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                          <span>
+                            Please pay <span className="font-medium text-foreground">{formatINR(inv.dueAmount)}</span>{" "}
+                            at the school fee counter — cash, cheque, or scan the school's UPI QR.
+                          </span>
+                        </p>
+                        /* The original Pay button, kept for when the school wants it back:
                         <div className="space-y-1.5">
                           <Button
                             onClick={() => pay(inv)}
@@ -325,6 +361,7 @@ export default function Portal() {
                             counter to avoid it.
                           </p>
                         </div>
+                        */
                       ) : (
                         <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-600">
                           <CheckCircle2 className="h-4 w-4" /> Fully paid
