@@ -8,6 +8,21 @@
       name="description"
       content="R K Public School, Garhwa — nurturing knowledge, character and confidence from Nursery to Class 12. Parent & staff portal for fees, receipts and school updates."
     />
+    <!-- Installable as an app: staff add it to the home screen and it opens with no
+         browser address bar. Manifest is generated per school in vite.config.ts;
+         icons are in public/ (regenerate with scripts/make-pwa-icons.mjs). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#286BE6" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+
+    <!-- iOS ignores the manifest for standalone mode and needs its own tags.
+         The title is overwritten from VITE_SCHOOL_* in main.tsx. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="R K Public School" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

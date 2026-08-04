@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
@@ -9,11 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, user, loading: restoringSession } = useAuth();
   const navigate = useNavigate();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Already signed in? Go straight to your dashboard instead of showing the form.
+  // This is what makes the installed app feel native: /login is the PWA's start_url,
+  // so a teacher taps the home-screen icon and lands on today's attendance with
+  // nothing to type. `replace` keeps the form out of the back history.
+  useEffect(() => {
+    if (user) navigate(landingPath(user.role), { replace: true });
+  }, [user, navigate]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +36,17 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  // The saved session is verified against the server on boot, so `user` is briefly
+  // null even for someone already signed in. Show a quiet splash instead of the form,
+  // or the installed app flashes a login screen every single time it's opened.
+  if (restoringSession || user) {
+    return (
+      <AuthShell>
+        <p className="py-20 text-center text-sm text-muted-foreground">Signing you in…</p>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell>

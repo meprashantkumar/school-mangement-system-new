@@ -15,6 +15,11 @@ document
     "content",
     `${SCHOOL.fullName} — parent & staff portal for fees, receipts and school updates.`
   );
+// The label under the icon when an iPhone adds this to the home screen (Android
+// takes it from the manifest instead). Short name keeps it from being truncated.
+document
+  .querySelector('meta[name="apple-mobile-web-app-title"]')
+  ?.setAttribute("content", SCHOOL.shortName || SCHOOL.name);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
