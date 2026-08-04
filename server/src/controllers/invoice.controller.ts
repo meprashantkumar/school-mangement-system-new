@@ -15,12 +15,20 @@ const MONTHS = [
 // Generates the given month's invoices for one fee structure. IDEMPOTENT: a student
 // who already has an invoice for this (structure, period) is skipped — so the same
 // month for the same class can never be generated twice / duplicated.
+// `includeItems` (optional) restricts the month to just those fee heads by name —
+// so a class set up once with its full fee menu can be billed selectively (e.g.
+// Tuition + Transport every month, Exam Fee only in exam months). When omitted or
+// empty, every item in the structure is billed (the original behaviour).
 async function generateForStructure(
   structure: IFeeStructure,
   m: number,
   y: number,
-  dueDate?: string
+  dueDate?: string,
+  includeItems?: string[]
 ) {
+  const include = includeItems?.length
+    ? new Set(includeItems.map((n) => String(n).trim().toLowerCase()))
+    : null;
   const period = `${y}-${String(m).padStart(2, "0")}`;
   const periodLabel = `${MONTHS[m - 1]} ${y}`;
   // Scope to the structure's academic year too — otherwise, if two batches of the
@@ -34,10 +42,15 @@ async function generateForStructure(
   let created = 0;
   let skipped = 0;
   for (const student of students) {
+    // One invoice per student per month, PERIOD — not per structure. If the class
+    // ever ends up with two structures for the same session (e.g. one created
+    // instead of edited), checking by structure would bill the student once per
+    // structure, double-counting shared items like Transport. Any existing invoice
+    // for this month in this session means the student is already billed: skip.
     const exists = await Invoice.findOne({
       student: student._id,
-      feeStructure: structure._id,
       period,
+      academicYear: structure.academicYear,
     });
     if (exists) {
       skipped += 1;
@@ -49,6 +62,7 @@ async function generateForStructure(
     const opted = student.optedServices || [];
     const overrides = new Map((student.serviceFees || []).map((f) => [f.name, f.amount]));
     const items = structure.items
+      .filter((i) => !include || include.has(i.name.trim().toLowerCase()))
       .filter((i) => !i.optional || opted.includes(i.name))
       .map((i) => ({
         name: i.name,
@@ -117,47 +131,90 @@ async function generateForStructure(
 // POST /api/invoices/generate  { feeStructureId, month (1-12), year, dueDate? }
 // Generates one class's month (single fee structure).
 export const generateInvoices = asyncHandler(async (req, res) => {
-  const { feeStructureId, month, year, dueDate } = req.body;
+  const { feeStructureId, month, year, dueDate, includeItems } = req.body;
   const m = Number(month);
   const y = Number(year);
   if (!m || m < 1 || m > 12 || !y) {
     throw new ApiError(400, "Please provide a valid month and year");
+  }
+  if (includeItems !== undefined && !Array.isArray(includeItems)) {
+    throw new ApiError(400, "includeItems must be a list of fee names");
+  }
+  if (Array.isArray(includeItems) && includeItems.length === 0) {
+    throw new ApiError(400, "Select at least one fee to include in this month");
   }
 
   const structure = await FeeStructure.findById(feeStructureId);
   if (!structure) throw new ApiError(404, "Fee structure not found");
 
-  const { created, skipped, total, periodLabel } = await generateForStructure(structure, m, y, dueDate);
+  const { created, skipped, total, periodLabel } = await generateForStructure(
+    structure,
+    m,
+    y,
+    dueDate,
+    includeItems
+  );
 
   const message = `Generated ${created} invoice(s) for ${periodLabel} (Class ${structure.class})${
     skipped ? `, skipped ${skipped} already generated` : ""
   }`;
-  if (created) logAudit(req, AUDIT.FEE_GENERATION, message);
+  if (created) {
+    logAudit(
+      req,
+      AUDIT.FEE_GENERATION,
+      `${message}${includeItems?.length ? ` — fees: ${includeItems.join(", ")}` : ""}`
+    );
+  }
 
   res.json({ message, created, skipped, totalStudents: total });
 });
 
-// POST /api/invoices/generate-bulk  { month (1-12), year, dueDate? }
-// Generates the chosen month for EVERY fee structure (all classes) in one go.
+// POST /api/invoices/generate-bulk  { month (1-12), year, dueDate?, includeItems?, classes? }
+// Generates the chosen month for every fee structure, or just the classes named in
+// `classes` — so a fee that only applies to some classes (an Exam Fee in a month
+// when only Class 2 sits an exam) can be billed to those classes alone.
 // Classes already generated for that month are skipped automatically (no duplicates).
 export const generateBulkInvoices = asyncHandler(async (req, res) => {
-  const { month, year, dueDate } = req.body;
+  const { month, year, dueDate, includeItems, classes } = req.body;
   const m = Number(month);
   const y = Number(year);
   if (!m || m < 1 || m > 12 || !y) {
     throw new ApiError(400, "Please provide a valid month and year");
   }
+  if (includeItems !== undefined && !Array.isArray(includeItems)) {
+    throw new ApiError(400, "includeItems must be a list of fee names");
+  }
+  if (Array.isArray(includeItems) && includeItems.length === 0) {
+    throw new ApiError(400, "Select at least one fee to include in this month");
+  }
+  if (classes !== undefined && !Array.isArray(classes)) {
+    throw new ApiError(400, "classes must be a list of class names");
+  }
+  const classList = Array.isArray(classes)
+    ? [...new Set(classes.map((c: unknown) => String(c ?? "").trim()).filter(Boolean))]
+    : null;
+  if (classList && classList.length === 0) {
+    throw new ApiError(400, "Select at least one class to generate for");
+  }
 
-  const structures = await FeeStructure.find().sort({ class: 1 });
+  // Omitting `classes` keeps the original behaviour: every class that has a structure.
+  const structures = await FeeStructure.find(
+    classList ? { class: { $in: classList } } : {}
+  ).sort({ class: 1 });
   if (structures.length === 0) {
-    throw new ApiError(400, "No fee structures found. Create fee structures first.");
+    throw new ApiError(
+      400,
+      classList
+        ? `No fee structure exists for ${classList.join(", ")}. Create it in Fee Setup first.`
+        : "No fee structures found. Create fee structures first."
+    );
   }
 
   let totalCreated = 0;
   let totalSkipped = 0;
   const results = [];
   for (const s of structures) {
-    const r = await generateForStructure(s, m, y, dueDate);
+    const r = await generateForStructure(s, m, y, dueDate, includeItems);
     totalCreated += r.created;
     totalSkipped += r.skipped;
     results.push({
@@ -174,7 +231,15 @@ export const generateBulkInvoices = asyncHandler(async (req, res) => {
   const message = `${periodLabel}: generated ${totalCreated} invoice(s) across ${structures.length} class(es)${
     totalSkipped ? `, skipped ${totalSkipped} already generated` : ""
   }`;
-  if (totalCreated) logAudit(req, AUDIT.FEE_GENERATION, `Bulk generation — ${message}`);
+  if (totalCreated) {
+    logAudit(
+      req,
+      AUDIT.FEE_GENERATION,
+      `Bulk generation — ${message}${
+        classList ? ` — classes: ${classList.join(", ")}` : ""
+      }${includeItems?.length ? ` — fees: ${includeItems.join(", ")}` : ""}`
+    );
+  }
 
   res.json({ message, periodLabel, totalCreated, totalSkipped, results });
 });
@@ -231,14 +296,16 @@ export const getInvoiceSummary = asyncHandler(async (req, res) => {
 });
 
 // DELETE /api/invoices/run?period=&class=&session=
-// Deletes a generated run (all invoices for one class in one month) — for undoing a
-// mistaken generation. Invoices that already have a payment are KEPT (skipped) so no
-// collected money / receipt is ever lost.
+// Deletes a generated run — all invoices for one class in one month, or, when
+// class is omitted, the ENTIRE month across every class (undo a whole bulk
+// generation in one go). Invoices that already have a payment or a manual
+// adjustment are KEPT (skipped) so no collected money / receipt is ever lost.
 export const deleteInvoiceRun = asyncHandler(async (req, res) => {
   const { period, class: className, session } = req.query as Record<string, string>;
-  if (!period || !className) throw new ApiError(400, "period and class are required");
+  if (!period) throw new ApiError(400, "period is required");
 
-  const filter: Record<string, unknown> = { period, class: className };
+  const filter: Record<string, unknown> = { period };
+  if (className) filter.class = className;
   if (session) filter.academicYear = session;
 
   // Keep any invoice that has real activity — a payment OR a manual adjustment
@@ -265,7 +332,9 @@ export const deleteInvoiceRun = asyncHandler(async (req, res) => {
     logAudit(
       req,
       AUDIT.FEE_GENERATION,
-      `Deleted generated fee for Class ${className} · ${period} (${deleted} invoice(s))`
+      className
+        ? `Deleted generated fee for Class ${className} · ${period} (${deleted} invoice(s))`
+        : `Undid the whole fee generation for ${period} — all classes (${deleted} invoice(s))`
     );
   }
 

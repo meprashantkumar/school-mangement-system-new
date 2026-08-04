@@ -54,6 +54,16 @@ export const createFeeStructure = asyncHandler(async (req, res) => {
   if (!name || !className || !academicYear) {
     throw new ApiError(400, "Name, class and academic year are required");
   }
+  // One structure per class per session. A second one would make fee generation
+  // bill the class twice (once per structure) — the fix is to EDIT the existing
+  // structure, not add another.
+  const duplicate = await FeeStructure.findOne({ class: className, academicYear });
+  if (duplicate) {
+    throw new ApiError(
+      400,
+      `Class ${className} already has a fee structure for ${academicYear} ("${duplicate.name}"). Edit that one instead of creating another — two structures would bill students twice.`
+    );
+  }
   const structure = await FeeStructure.create({
     name,
     class: className,
@@ -73,6 +83,20 @@ export const updateFeeStructure = asyncHandler(async (req, res) => {
   if (className !== undefined) structure.class = className;
   if (academicYear !== undefined) structure.academicYear = academicYear;
   if (items !== undefined) structure.items = items;
+
+  // Moving a structure onto a class+session that already has one would create
+  // the same double-billing hazard as creating a duplicate.
+  const clash = await FeeStructure.findOne({
+    _id: { $ne: structure._id },
+    class: structure.class,
+    academicYear: structure.academicYear,
+  });
+  if (clash) {
+    throw new ApiError(
+      400,
+      `Class ${structure.class} already has a fee structure for ${structure.academicYear} ("${clash.name}"). Two structures for one class would bill students twice.`
+    );
+  }
 
   await structure.save();
   logAudit(req, AUDIT.FEE_SETUP, `Updated fee structure "${structure.name}" (Class ${structure.class})`);
