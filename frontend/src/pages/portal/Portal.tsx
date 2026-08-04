@@ -10,6 +10,7 @@ import {
   Wallet,
   Award,
   FileText,
+  ChevronDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
@@ -29,6 +30,10 @@ const RESULTS_PER_EXAM_PAGE = 4;
 const DUES_PER_PAGE = 4;
 const PAYMENTS_PER_PAGE = 6;
 
+/** Jump to a section, clearing the sticky header. */
+const jumpTo = (id: string) =>
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
 export default function Portal() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -37,6 +42,12 @@ export default function Portal() {
   const [results, setResults] = useState<PortalStudentResult[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [paying, setPaying] = useState<string | null>(null);
+  const [hasTimetable, setHasTimetable] = useState(false);
+  // The fee notes are worth a whole screen on a phone, so they start folded
+  // there and stay open on the roomier desktop layout.
+  const [notesOpen, setNotesOpen] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches
+  );
 
   // Client-side pagination (portal loads everything up-front).
   const [duesPage, setDuesPage] = useState(1);
@@ -98,82 +109,125 @@ export default function Portal() {
   const safePayPage = Math.min(payPage, payPages);
   const payShown = payments.slice((safePayPage - 1) * PAYMENTS_PER_PAGE, safePayPage * PAYMENTS_PER_PAGE);
 
+  const hasResults = results.some((r) => r.exams.length > 0);
+  // Shortcuts so a phone user doesn't have to scroll past everything to reach
+  // their payment history.
+  const jumps = [
+    { id: "dues", label: "Fees" },
+    ...(hasResults ? [{ id: "results", label: "Results" }] : []),
+    ...(hasTimetable ? [{ id: "timetable", label: "Timetable" }] : []),
+    ...(payments.length ? [{ id: "history", label: "Receipts" }] : []),
+  ];
+
   return (
     <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/85 px-4 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-3 font-semibold">
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-2 border-b bg-background/85 px-3 backdrop-blur sm:px-6">
+        <div className="flex min-w-0 items-center gap-2.5 font-semibold">
           <Crest size="sm" />
-          <div className="leading-tight">
-            <div className="font-heading">{schoolName}</div>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate font-heading">{schoolName}</div>
             <div className="text-xs font-normal text-muted-foreground">Parent Portal</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           <span className="hidden text-sm text-muted-foreground sm:inline">Hi, {user?.name}</span>
-          <Button variant="outline" size="sm" onClick={logout}>
-            <LogOut className="h-4 w-4" /> Logout
+          {/* Icon-only on phones so a long school name still fits. */}
+          <Button variant="outline" size="sm" onClick={logout} aria-label="Logout" className="h-10 px-3">
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Logout</span>
           </Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
+      <main className="mx-auto max-w-4xl space-y-5 p-3 pb-20 sm:space-y-6 sm:p-6">
         {/* Summary */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="sm:col-span-2 border-0 bg-gradient-to-br from-primary to-brand-blue text-white">
-            <CardContent className="flex items-center justify-between p-6">
-              <div>
+        <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+          <Card className="border-0 bg-gradient-to-br from-primary to-brand-blue text-white sm:col-span-2">
+            <CardContent className="flex items-center justify-between gap-3 p-4 sm:p-6">
+              <div className="min-w-0">
                 <p className="text-sm text-white/80">Total amount due</p>
-                <p className="mt-1 text-3xl font-bold">{formatINR(totalDue)}</p>
-                <p className="mt-1 text-sm text-white/80">
+                <p className="mt-1 text-2xl font-bold sm:text-3xl">{formatINR(totalDue)}</p>
+                <p className="mt-1 text-xs text-white/80 sm:text-sm">
                   {totalDue > 0
                     ? "Please clear the dues to avoid late fees."
                     : "You're all caught up. Thank you!"}
                 </p>
               </div>
-              <Wallet className="h-12 w-12 text-white/40" />
+              <Wallet className="h-10 w-10 shrink-0 text-white/40 sm:h-12 sm:w-12" />
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="flex h-full flex-col justify-center p-6">
-              <p className="text-sm text-muted-foreground">Children</p>
-              <p className="mt-1 text-3xl font-bold">
-                {new Set(invoices.map((i) => i.student?._id)).size || "—"}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">{invoices.length} fee record(s)</p>
+            <CardContent className="flex h-full flex-row items-center justify-between gap-3 p-4 sm:flex-col sm:items-start sm:justify-center sm:p-6">
+              <div>
+                <p className="text-sm text-muted-foreground">Children</p>
+                <p className="mt-0.5 text-2xl font-bold sm:mt-1 sm:text-3xl">
+                  {new Set(invoices.map((i) => i.student?._id)).size || "—"}
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">{invoices.length} fee record(s)</p>
             </CardContent>
           </Card>
         </div>
 
+        {/* Section shortcuts (phones only — desktop shows everything at once) */}
+        {jumps.length > 1 && (
+          <div className="-mx-3 flex gap-2 overflow-x-auto px-3 sm:hidden">
+            {jumps.map((j) => (
+              <button
+                key={j.id}
+                onClick={() => jumpTo(j.id)}
+                className="h-10 shrink-0 touch-manipulation rounded-full border bg-card px-4 text-sm font-medium transition-colors hover:bg-accent"
+              >
+                {j.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Good to know */}
         <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p className="flex items-center gap-2 font-medium">
-              <Info className="h-4 w-4 text-primary" /> Good to know
-            </p>
-            <ul className="ml-6 list-disc space-y-1 text-muted-foreground">
-              <li>
-                <span className="font-medium text-foreground">Pay online</span> using UPI, card, net
-                banking or wallet — a convenience fee of{" "}
-                <span className="font-medium text-foreground">{platformFeePct}%</span> applies
-                per online payment (it covers the payment-gateway charge).
-              </li>
-              <li>
-                To <span className="font-medium text-foreground">avoid the convenience fee</span>, pay
-                by cash, cheque, or by scanning the school's UPI QR at the fee counter.
-              </li>
-              {lateFeePerDay > 0 && (
+          <button
+            onClick={() => setNotesOpen((o) => !o)}
+            aria-expanded={notesOpen}
+            className="flex w-full touch-manipulation items-center justify-between gap-2 p-4 text-left text-sm font-medium"
+          >
+            <span className="flex items-center gap-2">
+              <Info className="h-4 w-4 shrink-0 text-primary" /> Good to know
+            </span>
+            <ChevronDown
+              className={cn("h-4 w-4 shrink-0 transition-transform", notesOpen && "rotate-180")}
+            />
+          </button>
+          {notesOpen && (
+            <CardContent className="p-4 pt-0 text-sm">
+              <ul className="ml-5 list-disc space-y-1.5 text-muted-foreground">
                 <li>
-                  A <span className="font-medium text-foreground">late fee of {formatINR(lateFeePerDay)}/day</span>
-                  {config?.lateFeeMax ? ` (up to ${formatINR(config.lateFeeMax)})` : ""} is added after
-                  a fee's due date, so please pay on time.
+                  <span className="font-medium text-foreground">Pay online</span> using UPI, card, net
+                  banking or wallet — a convenience fee of{" "}
+                  <span className="font-medium text-foreground">{platformFeePct}%</span> applies
+                  per online payment (it covers the payment-gateway charge).
                 </li>
-              )}
-            </ul>
-          </CardContent>
+                <li>
+                  To <span className="font-medium text-foreground">avoid the convenience fee</span>, pay
+                  by cash, cheque, or by scanning the school's UPI QR at the fee counter.
+                </li>
+                {lateFeePerDay > 0 && (
+                  <li>
+                    A{" "}
+                    <span className="font-medium text-foreground">
+                      late fee of {formatINR(lateFeePerDay)}/day
+                    </span>
+                    {config?.lateFeeMax ? ` (up to ${formatINR(config.lateFeeMax)})` : ""} is added
+                    after a fee's due date, so please pay on time.
+                  </li>
+                )}
+              </ul>
+            </CardContent>
+          )}
         </Card>
 
         {/* Dues */}
-        <section>
+        <section id="dues" className="scroll-mt-20">
           <h2 className="mb-3 text-lg font-semibold">Fee Dues</h2>
           {invoices.length === 0 ? (
             <Card>
@@ -187,38 +241,40 @@ export default function Portal() {
                 const overdue = isOverdue(inv);
                 return (
                   <Card key={inv._id} className={overdue ? "border-rose-300" : ""}>
-                    <CardHeader className="flex flex-row items-start justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-base">
-                          {inv.student?.name}{" "}
-                          <span className="text-sm font-normal text-muted-foreground">
-                            · {inv.periodLabel} · Class {inv.class}
-                          </span>
-                        </CardTitle>
+                    <CardHeader className="flex flex-row items-start justify-between gap-3 p-4 pb-3 sm:p-6 sm:pb-4">
+                      <div className="min-w-0">
+                        {/* Name and period on separate lines — as one sentence they
+                            wrap into an unreadable block on a narrow screen. */}
+                        <CardTitle className="truncate text-base">{inv.student?.name}</CardTitle>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {inv.periodLabel} · Class {inv.class}
+                        </p>
                         {inv.dueDate && (
                           <p
                             className={`mt-1 flex items-center gap-1 text-xs ${
                               overdue ? "font-medium text-rose-600" : "text-muted-foreground"
                             }`}
                           >
-                            <CalendarClock className="h-3.5 w-3.5" />
+                            <CalendarClock className="h-3.5 w-3.5 shrink-0" />
                             Due by {new Date(inv.dueDate).toLocaleDateString("en-IN")}
                             {overdue ? " · Overdue" : ""}
                           </p>
                         )}
                       </div>
-                      <Badge status={inv.status} />
+                      <div className="shrink-0">
+                        <Badge status={inv.status} />
+                      </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-3 p-4 pt-0 sm:p-6 sm:pt-0">
                       {/* Line items */}
                       <div className="grid gap-1 text-sm sm:grid-cols-2">
                         {inv.items.map((it, i) => (
                           <div
                             key={i}
-                            className="flex justify-between rounded-md border px-3 py-1.5"
+                            className="flex justify-between gap-2 rounded-md border px-3 py-1.5"
                           >
-                            <span>{it.name}</span>
-                            <span>{formatINR(it.amount)}</span>
+                            <span className="min-w-0 truncate">{it.name}</span>
+                            <span className="shrink-0">{formatINR(it.amount)}</span>
                           </div>
                         ))}
                       </div>
@@ -253,8 +309,12 @@ export default function Portal() {
                       </div>
 
                       {inv.dueAmount > 0 ? (
-                        <div className="space-y-1">
-                          <Button onClick={() => pay(inv)} disabled={paying === inv._id}>
+                        <div className="space-y-1.5">
+                          <Button
+                            onClick={() => pay(inv)}
+                            disabled={paying === inv._id}
+                            className="h-11 w-full touch-manipulation sm:w-auto"
+                          >
                             <CreditCard className="h-4 w-4" />
                             {paying === inv._id
                               ? "Processing…"
@@ -287,8 +347,8 @@ export default function Portal() {
         </section>
 
         {/* Results */}
-        {results.some((r) => r.exams.length > 0) && (
-          <section>
+        {hasResults && (
+          <section id="results" className="scroll-mt-20">
             <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
               <Award className="h-5 w-5 text-primary" /> Exam Results
             </h2>
@@ -305,8 +365,8 @@ export default function Portal() {
                   );
                   return (
                     <Card key={r.student._id}>
-                      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
+                      <CardHeader className="flex flex-col gap-3 p-4 pb-3 sm:flex-row sm:items-start sm:justify-between sm:p-6 sm:pb-4">
+                        <div className="min-w-0">
                           <CardTitle className="text-base">
                             {r.student.name}{" "}
                             <span className="text-sm font-normal text-muted-foreground">
@@ -326,14 +386,13 @@ export default function Portal() {
                         </div>
                         <Button
                           variant="outline"
-                          size="sm"
-                          className="w-full sm:w-auto"
+                          className="h-11 w-full touch-manipulation sm:h-9 sm:w-auto"
                           onClick={() => navigate(`/portal/report-card/${r.student._id}`)}
                         >
                           <FileText className="h-4 w-4" /> Report card
                         </Button>
                       </CardHeader>
-                      <CardContent className="space-y-2">
+                      <CardContent className="space-y-2 p-4 pt-0 sm:p-6 sm:pt-0">
                         {shown.map((ex) => (
                           <div
                             key={ex.examId}
@@ -387,10 +446,10 @@ export default function Portal() {
         )}
 
         {/* Timetable + exam schedule */}
-        <PortalTimetable />
+        <PortalTimetable onContent={setHasTimetable} />
 
         {/* History */}
-        <section>
+        <section id="history" className="scroll-mt-20">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
             <Receipt className="h-5 w-5 text-primary" /> Payment History
           </h2>
@@ -405,8 +464,11 @@ export default function Portal() {
               <Card>
                 <CardContent className="divide-y p-0">
                   {payShown.map((p) => (
-                    <div key={p._id} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <div>
+                    <div
+                      key={p._id}
+                      className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-4"
+                    >
+                      <div className="min-w-0">
                         <p className="font-medium">{p.receiptNo}</p>
                         <p className="text-muted-foreground">
                           {p.student?.name} ·{" "}
@@ -414,14 +476,18 @@ export default function Portal() {
                           <span className="uppercase">{p.mode}</span>
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium">{formatINR(p.amount)}</span>
-                        <button
+                      {/* Amount and receipt sit on their own row on a phone, where
+                          squeezing them next to the details left both unreadable. */}
+                      <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                        <span className="font-semibold">{formatINR(p.amount)}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 touch-manipulation"
                           onClick={() => window.open(`/receipt/${p._id}`, "_blank")}
-                          className="text-xs font-medium text-primary hover:underline"
                         >
-                          Receipt
-                        </button>
+                          <Receipt className="h-3.5 w-3.5" /> Receipt
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -453,9 +519,9 @@ function Row({
   className?: string;
 }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className={className}>{value}</span>
+      <span className={cn("shrink-0", className)}>{value}</span>
     </div>
   );
 }

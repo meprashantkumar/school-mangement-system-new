@@ -12,17 +12,21 @@ import {
   ClipboardCheck,
   Trophy,
   CalendarRange,
+  GraduationCap,
+  type LucideIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { classLabel } from "@/lib/constants";
+import { SCHOOL } from "@/lib/school";
 import { cn } from "@/lib/utils";
 import type { AttendanceRow, AttendanceStatus, RosterDay, TeacherAssignment } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Crest } from "@/components/Brand";
 import { TeacherResults } from "@/components/TeacherResults";
 import { TeacherTimetableTab } from "@/components/TeacherTimetableTab";
+import { TeacherChildrenTab } from "@/components/TeacherChildrenTab";
 
 const todayKey = () => new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD" (local)
 
@@ -52,6 +56,8 @@ const applyMark = (row: AttendanceRow, next: AttendanceStatus | null): Attendanc
   return { ...row, status: next, present, absent, pct: total > 0 ? Math.round((present / total) * 100) : null };
 };
 
+type TabKey = "attendance" | "results" | "timetable" | "children";
+
 function PctBadge({ pct }: { pct: number | null }) {
   if (pct === null)
     return <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">—</span>;
@@ -77,7 +83,10 @@ export default function TeacherDashboard() {
   const [roster, setRoster] = useState<RosterDay | null>(null);
   const [loading, setLoading] = useState(false);
   const [bulking, setBulking] = useState(false);
-  const [tab, setTab] = useState<"attendance" | "results" | "timetable">("attendance");
+  const [tab, setTab] = useState<TabKey>("attendance");
+  // Only staff whose own child studies here get the "My children" tab, so it
+  // stays out of the way for everyone else.
+  const [hasChildren, setHasChildren] = useState(false);
 
   // Load the teacher's assigned classes once.
   useEffect(() => {
@@ -91,6 +100,12 @@ export default function TeacherDashboard() {
       })
       .catch(() => {})
       .finally(() => setLoadedProfile(true));
+
+    // Staff ward: does this staff member have a child enrolled here?
+    api
+      .get("/teacher/children")
+      .then(({ data }) => setHasChildren((data.students || []).length > 0))
+      .catch(() => {});
   }, []);
 
   const loadRoster = useCallback(async () => {
@@ -115,6 +130,14 @@ export default function TeacherDashboard() {
 
   const dayInfo = roster?.dayInfo;
   const offDay = !!dayInfo && (dayInfo.sunday || dayInfo.holiday);
+  const isToday = date === todayKey();
+
+  const tabs: { key: TabKey; label: string; icon: LucideIcon }[] = [
+    { key: "attendance", label: "Attendance", icon: ClipboardCheck },
+    { key: "results", label: "Results", icon: Trophy },
+    { key: "timetable", label: "Timetable", icon: CalendarRange },
+    ...(hasChildren ? [{ key: "children" as TabKey, label: "My child", icon: GraduationCap }] : []),
+  ];
 
   const counts = useMemo(() => {
     if (!roster) return null;
@@ -198,20 +221,24 @@ export default function TeacherDashboard() {
   return (
     <div className="min-h-screen bg-muted/40">
       {/* Header */}
-      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur">
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b bg-background/90 px-3 backdrop-blur sm:px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
           <Crest size="sm" />
-          <div className="leading-tight">
-            <div className="font-heading text-sm font-bold">Attendance</div>
-            <div className="text-xs text-muted-foreground">Hi, {user?.name?.split(" ")[0]}</div>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate font-heading text-sm font-bold">{SCHOOL.name}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              Hi, {user?.name?.split(" ")[0]}
+            </div>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={logout}>
-          <LogOut className="h-4 w-4" /> Logout
+        {/* Icon-only on phones — the label costs room the class name needs. */}
+        <Button variant="outline" size="sm" onClick={logout} aria-label="Logout" className="h-10 shrink-0 px-3">
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">Logout</span>
         </Button>
       </header>
 
-      <main className="mx-auto max-w-2xl space-y-4 p-4">
+      <main className="mx-auto max-w-2xl space-y-4 p-3 pb-20 sm:p-4">
         {!loadedProfile ? (
           <p className="py-16 text-center text-muted-foreground">Loading…</p>
         ) : assignments.length === 0 ? (
@@ -223,9 +250,9 @@ export default function TeacherDashboard() {
           </div>
         ) : (
           <>
-            {/* Class selector */}
+            {/* Class selector — scrolls sideways rather than stacking into rows */}
             {assignments.length > 1 ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
                 {assignments.map((a) => {
                   const active = selected && asgKey(selected) === asgKey(a);
                   return (
@@ -233,7 +260,7 @@ export default function TeacherDashboard() {
                       key={asgKey(a)}
                       onClick={() => setSelected({ class: a.class, section: a.section })}
                       className={cn(
-                        "rounded-full border px-4 py-2 text-sm font-semibold transition-colors",
+                        "h-11 shrink-0 touch-manipulation rounded-full border px-4 text-sm font-semibold transition-colors",
                         active
                           ? "border-primary bg-primary text-primary-foreground"
                           : "bg-card hover:bg-accent"
@@ -246,35 +273,33 @@ export default function TeacherDashboard() {
               </div>
             ) : (
               selected && (
-                <div className="text-lg font-heading font-bold">
+                <div className="font-heading text-base font-bold sm:text-lg">
                   {classLabel(selected.class)} · Section {selected.section}
                 </div>
               )
             )}
 
-            {/* Tabs */}
-            <div className="flex gap-2">
-              <Button
-                variant={tab === "attendance" ? "default" : "outline"}
-                onClick={() => setTab("attendance")}
-                className="flex-1"
-              >
-                <ClipboardCheck className="h-4 w-4" /> Attendance
-              </Button>
-              <Button
-                variant={tab === "results" ? "default" : "outline"}
-                onClick={() => setTab("results")}
-                className="flex-1"
-              >
-                <Trophy className="h-4 w-4" /> Results
-              </Button>
-              <Button
-                variant={tab === "timetable" ? "default" : "outline"}
-                onClick={() => setTab("timetable")}
-                className="flex-1"
-              >
-                <CalendarRange className="h-4 w-4" /> Timetable
-              </Button>
+            {/* Tabs — two rows of two on phones so nothing gets squeezed off-screen */}
+            <div
+              className={cn(
+                "grid gap-2",
+                tabs.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+              )}
+            >
+              {tabs.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <Button
+                    key={t.key}
+                    variant={tab === t.key ? "default" : "outline"}
+                    onClick={() => setTab(t.key)}
+                    className="h-11 min-w-0 touch-manipulation gap-1.5 px-2 text-xs sm:gap-2 sm:text-sm"
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{t.label}</span>
+                  </Button>
+                );
+              })}
             </div>
 
             {tab === "results" && selected && (
@@ -283,35 +308,52 @@ export default function TeacherDashboard() {
 
             {tab === "timetable" && <TeacherTimetableTab />}
 
+            {tab === "children" && <TeacherChildrenTab />}
+
             {tab === "attendance" && (
             <>
-            {/* Date control */}
-            <div className="flex items-center gap-2 rounded-xl border bg-card p-2">
-              <Button variant="ghost" size="icon" onClick={() => setDate((d) => addDays(d, -1))}>
+            {/* Date control. "Today" always occupies its slot (disabled when it's
+                already today) so the row never reflows under the thumb. */}
+            <div className="flex items-center gap-1 rounded-xl border bg-card p-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 shrink-0 touch-manipulation"
+                aria-label="Previous day"
+                onClick={() => setDate((d) => addDays(d, -1))}
+              >
                 <ChevronLeft className="h-5 w-5" />
               </Button>
-              <label className="flex flex-1 items-center justify-center gap-2">
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <label className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+                <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+                {/* text-base, not text-sm: iOS Safari zooms the page in when a
+                    focused field is under 16px. */}
                 <input
                   type="date"
                   value={date}
                   onChange={(e) => e.target.value && setDate(e.target.value)}
-                  className="bg-transparent text-center text-sm font-medium outline-none"
+                  className="w-full min-w-0 bg-transparent text-center text-base font-medium outline-none"
                 />
               </label>
               <Button
                 variant="ghost"
                 size="icon"
+                className="h-11 w-11 shrink-0 touch-manipulation"
+                aria-label="Next day"
                 onClick={() => setDate((d) => addDays(d, 1))}
                 disabled={date >= todayKey()}
               >
                 <ChevronRight className="h-5 w-5" />
               </Button>
-              {date !== todayKey() && (
-                <Button variant="outline" size="sm" onClick={() => setDate(todayKey())}>
-                  Today
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-11 shrink-0 touch-manipulation px-2.5 text-xs"
+                onClick={() => setDate(todayKey())}
+                disabled={isToday}
+              >
+                Today
+              </Button>
             </div>
             <p className="text-center text-sm font-medium text-muted-foreground">{prettyDate(date)}</p>
 
@@ -319,7 +361,7 @@ export default function TeacherDashboard() {
             {loading ? (
               <p className="py-16 text-center text-muted-foreground">Loading…</p>
             ) : offDay ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center sm:p-8">
                 {dayInfo?.sunday ? (
                   <Sun className="mx-auto h-10 w-10 text-amber-500" />
                 ) : (
@@ -332,7 +374,7 @@ export default function TeacherDashboard() {
                   No attendance is taken on this day and it doesn't count toward the percentage.
                 </p>
                 {dayInfo?.holiday && (
-                  <Button variant="outline" size="sm" className="mt-4" onClick={removeHoliday}>
+                  <Button variant="outline" className="mt-4 h-11" onClick={removeHoliday}>
                     Remove holiday
                   </Button>
                 )}
@@ -340,44 +382,65 @@ export default function TeacherDashboard() {
             ) : (
               roster && (
                 <>
-                  {/* Summary */}
-                  <div className="grid grid-cols-4 gap-2 rounded-xl border bg-card p-3 text-center">
-                    <div>
-                      <p className="text-xl font-bold text-emerald-600">{counts?.present}</p>
-                      <p className="text-xs text-muted-foreground">Present</p>
-                    </div>
-                    <div>
-                      <p className="text-xl font-bold text-rose-600">{counts?.absent}</p>
-                      <p className="text-xs text-muted-foreground">Absent</p>
-                    </div>
-                    <div>
-                      <p className="text-xl font-bold text-muted-foreground">{counts?.unmarked}</p>
-                      <p className="text-xs text-muted-foreground">Left</p>
-                    </div>
-                    <div>
-                      <p
-                        className={cn(
-                          "text-xl font-bold",
-                          counts?.avg == null
-                            ? "text-muted-foreground"
-                            : counts.avg >= 75
-                              ? "text-emerald-600"
-                              : "text-rose-600"
-                        )}
-                      >
-                        {counts?.avg == null ? "—" : `${counts.avg}%`}
-                      </p>
-                      <p className="text-xs text-muted-foreground">Class avg</p>
+                  {/* Running totals stay pinned under the header: on a phone the
+                      roster is far longer than the screen, and the teacher needs
+                      to see "how many left" without scrolling back up. */}
+                  <div className="sticky top-16 z-20 -mx-3 border-y bg-background/95 px-3 py-2 backdrop-blur sm:-mx-4 sm:px-4">
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                      <div>
+                        <p className="text-lg font-bold leading-tight text-emerald-600 sm:text-xl">
+                          {counts?.present}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">Present</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold leading-tight text-rose-600 sm:text-xl">
+                          {counts?.absent}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">Absent</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold leading-tight text-muted-foreground sm:text-xl">
+                          {counts?.unmarked}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">Left</p>
+                      </div>
+                      <div>
+                        <p
+                          className={cn(
+                            "text-lg font-bold leading-tight sm:text-xl",
+                            counts?.avg == null
+                              ? "text-muted-foreground"
+                              : counts.avg >= 75
+                                ? "text-emerald-600"
+                                : "text-rose-600"
+                          )}
+                        >
+                          {counts?.avg == null ? "—" : `${counts.avg}%`}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground sm:text-xs">Class avg</p>
+                      </div>
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={markAllPresent} disabled={bulking} className="flex-1">
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={markAllPresent}
+                      disabled={bulking}
+                      className="h-11 flex-1 touch-manipulation"
+                    >
                       <CheckCheck className="h-4 w-4" /> Mark all present
                     </Button>
-                    <Button variant="outline" onClick={markHoliday}>
-                      <PalmtreeIcon className="h-4 w-4" /> Holiday
+                    <Button
+                      variant="outline"
+                      onClick={markHoliday}
+                      aria-label="Mark this day a holiday"
+                      title="Mark this day a holiday"
+                      className="h-11 shrink-0 touch-manipulation px-3"
+                    >
+                      <PalmtreeIcon className="h-4 w-4" />
+                      <span className="hidden sm:inline">Holiday</span>
                     </Button>
                   </div>
 
@@ -391,24 +454,25 @@ export default function TeacherDashboard() {
                       roster.students.map((s, i) => (
                         <div
                           key={s._id}
-                          className="flex items-center gap-3 rounded-xl border bg-card p-3"
+                          className="flex items-center gap-2.5 rounded-xl border bg-card p-2.5 sm:gap-3 sm:p-3"
                         >
-                          <div className="w-7 shrink-0 text-center text-sm font-semibold text-muted-foreground">
+                          <div className="w-6 shrink-0 text-center text-sm font-semibold text-muted-foreground sm:w-7">
                             {s.rollNo || i + 1}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium">{s.name}</p>
-                            <div className="mt-0.5 flex items-center gap-2">
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                               <span className="text-xs text-muted-foreground">Adm {s.admissionNo}</span>
                               <PctBadge pct={s.pct} />
                             </div>
                           </div>
-                          <div className="flex shrink-0 gap-2">
+                          <div className="flex shrink-0 gap-1.5 sm:gap-2">
                             <button
                               onClick={() => mark(s, "present")}
                               aria-label="Present"
+                              aria-pressed={s.status === "present"}
                               className={cn(
-                                "flex h-11 w-11 items-center justify-center rounded-lg border-2 text-base font-bold transition-colors",
+                                "flex h-11 w-11 touch-manipulation select-none items-center justify-center rounded-lg border-2 text-base font-bold transition-colors active:scale-95",
                                 s.status === "present"
                                   ? "border-emerald-600 bg-emerald-500 text-white"
                                   : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
@@ -419,8 +483,9 @@ export default function TeacherDashboard() {
                             <button
                               onClick={() => mark(s, "absent")}
                               aria-label="Absent"
+                              aria-pressed={s.status === "absent"}
                               className={cn(
-                                "flex h-11 w-11 items-center justify-center rounded-lg border-2 text-base font-bold transition-colors",
+                                "flex h-11 w-11 touch-manipulation select-none items-center justify-center rounded-lg border-2 text-base font-bold transition-colors active:scale-95",
                                 s.status === "absent"
                                   ? "border-rose-600 bg-rose-500 text-white"
                                   : "border-rose-200 text-rose-600 hover:bg-rose-50"

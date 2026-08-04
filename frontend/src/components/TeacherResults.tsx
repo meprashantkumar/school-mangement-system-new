@@ -96,9 +96,11 @@ export function TeacherResults({ klass, section }: { klass: string; section: str
   // Exam list.
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-heading text-lg font-bold">Exams · {classLabel(klass)}</h2>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="min-w-0 truncate font-heading text-base font-bold sm:text-lg">
+          Exams · {classLabel(klass)}
+        </h2>
+        <Button size="sm" className="h-10 shrink-0 touch-manipulation" onClick={() => setDialogOpen(true)}>
           <Plus className="h-4 w-4" /> New exam
         </Button>
       </div>

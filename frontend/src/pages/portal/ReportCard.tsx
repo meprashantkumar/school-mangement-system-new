@@ -45,23 +45,24 @@ export default function ReportCard() {
   const published = data.exams; // backend only returns published exams
 
   return (
-    <div className="min-h-screen bg-muted/40 p-4 print:bg-white print:p-0">
-      {/* Action bar (not printed) */}
-      <div className="mx-auto mb-4 flex max-w-3xl items-center justify-between print:hidden">
-        <Button variant="outline" size="sm" onClick={() => navigate("/portal")}>
+    <div className="min-h-screen bg-muted/40 p-3 pb-10 print:bg-white print:p-0 sm:p-4">
+      {/* Action bar (not printed). Sticky so Print stays in reach on a phone,
+          where the card itself is several screens long. */}
+      <div className="sticky top-0 z-10 -mx-3 mb-4 flex items-center justify-between gap-2 border-b bg-muted/80 px-3 py-2 backdrop-blur print:hidden sm:static sm:mx-auto sm:max-w-3xl sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <Button variant="outline" size="sm" className="h-10" onClick={() => navigate("/portal")}>
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Print / Save PDF
+        <Button size="sm" className="h-10" onClick={() => window.print()}>
+          <Printer className="h-4 w-4" /> <span className="hidden sm:inline">Print / </span>Save PDF
         </Button>
       </div>
 
       {/* Report card sheet */}
-      <div className="mx-auto max-w-3xl rounded-xl border bg-white p-6 shadow-sm print:rounded-none print:border-0 print:shadow-none sm:p-8">
+      <div className="mx-auto max-w-3xl rounded-xl border bg-white p-4 shadow-sm print:rounded-none print:border-0 print:shadow-none sm:p-8">
         {/* Header */}
-        <div className="flex items-center gap-4 border-b pb-4">
+        <div className="flex items-center gap-3 border-b pb-4 sm:gap-4">
           <Crest size="md" />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h1 className="font-heading text-xl font-bold sm:text-2xl">{SCHOOL.name}</h1>
             {SCHOOL.place && <p className="text-sm text-muted-foreground">{SCHOOL.place}</p>}
             <p className="mt-1 text-sm font-semibold text-primary">Progress Report · {s.session}</p>
@@ -117,24 +118,37 @@ export default function ReportCard() {
                   {!ex.complete ? "Result awaited" : ex.passed ? "PASS" : "FAIL"}
                 </span>
               </div>
+              {/* Max and Pass are dropped on a phone — five columns crush the
+                  subject name. They're back on tablets and in print (the print
+                  viewport is paper-width, so it clears the sm breakpoint). */}
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-y bg-muted/40 text-left">
-                    <th className="px-3 py-1.5 font-semibold">Subject</th>
-                    <th className="px-3 py-1.5 text-right font-semibold">Max</th>
-                    <th className="px-3 py-1.5 text-right font-semibold">Pass</th>
-                    <th className="px-3 py-1.5 text-right font-semibold">Marks</th>
-                    <th className="px-3 py-1.5 text-right font-semibold">Result</th>
+                    <th className="px-2 py-1.5 font-semibold sm:px-3">Subject</th>
+                    <th className="hidden px-3 py-1.5 text-right font-semibold sm:table-cell">Max</th>
+                    <th className="hidden px-3 py-1.5 text-right font-semibold sm:table-cell">Pass</th>
+                    <th className="px-2 py-1.5 text-right font-semibold sm:px-3">Marks</th>
+                    <th className="px-2 py-1.5 text-right font-semibold sm:px-3">Result</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ex.subjects.map((sub) => (
                     <tr key={sub.subject} className="border-b">
-                      <td className="px-3 py-1.5">{sub.name}</td>
-                      <td className="px-3 py-1.5 text-right text-muted-foreground">{sub.maxMarks}</td>
-                      <td className="px-3 py-1.5 text-right text-muted-foreground">{sub.passMarks}</td>
-                      <td className="px-3 py-1.5 text-right font-medium">{markText(sub)}</td>
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-2 py-1.5 sm:px-3">
+                        {sub.name}
+                        {/* Keeps "out of how many" visible where Max is hidden. */}
+                        <span className="ml-1 text-xs text-muted-foreground sm:hidden">
+                          / {sub.maxMarks}
+                        </span>
+                      </td>
+                      <td className="hidden px-3 py-1.5 text-right text-muted-foreground sm:table-cell">
+                        {sub.maxMarks}
+                      </td>
+                      <td className="hidden px-3 py-1.5 text-right text-muted-foreground sm:table-cell">
+                        {sub.passMarks}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-medium sm:px-3">{markText(sub)}</td>
+                      <td className="px-2 py-1.5 text-right sm:px-3">
                         {!sub.entered ? (
                           <span className="text-muted-foreground">—</span>
                         ) : (
@@ -146,11 +160,16 @@ export default function ReportCard() {
                     </tr>
                   ))}
                   <tr className="border-b-2 font-semibold">
-                    <td className="px-3 py-1.5">Total</td>
-                    <td className="px-3 py-1.5 text-right">{ex.maxTotal}</td>
-                    <td className="px-3 py-1.5" />
-                    <td className="px-3 py-1.5 text-right">{ex.total}</td>
-                    <td className="px-3 py-1.5 text-right">{ex.pct}%</td>
+                    <td className="px-2 py-1.5 sm:px-3">Total</td>
+                    <td className="hidden px-3 py-1.5 text-right sm:table-cell">{ex.maxTotal}</td>
+                    <td className="hidden px-3 py-1.5 sm:table-cell" />
+                    <td className="px-2 py-1.5 text-right sm:px-3">
+                      {ex.total}
+                      <span className="ml-0.5 text-xs font-normal text-muted-foreground sm:hidden">
+                        /{ex.maxTotal}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right sm:px-3">{ex.pct}%</td>
                   </tr>
                 </tbody>
               </table>

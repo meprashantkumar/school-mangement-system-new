@@ -216,21 +216,31 @@ export function ExamFormDialog({
                   return (
                     <div
                       key={s._id}
-                      className={cn("flex items-center gap-3 rounded-md px-2 py-1.5", p.checked ? "bg-primary/5" : "")}
+                      className={cn(
+                        // Wraps on a phone: the name plus both mark boxes on one
+                        // line leaves the subject name about 40px wide.
+                        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md px-2 py-1.5",
+                        p.checked ? "bg-primary/5" : ""
+                      )}
                     >
-                      <label className="flex flex-1 cursor-pointer items-center gap-2">
-                        <input type="checkbox" checked={p.checked} onChange={() => toggle(s._id)} />
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-1">
+                        <input
+                          type="checkbox"
+                          checked={p.checked}
+                          onChange={() => toggle(s._id)}
+                          className="h-4 w-4 shrink-0 touch-manipulation"
+                        />
                         <span className="font-medium">{s.name}</span>
                       </label>
                       {p.checked && (
-                        <div className="flex items-center gap-2 text-sm">
+                        <div className="flex w-full items-center gap-2 text-sm sm:w-auto">
                           <span className="text-muted-foreground">Max</span>
                           <Input
                             type="number"
                             min={1}
                             value={p.max}
                             onChange={(e) => setField(s._id, "max", e.target.value)}
-                            className="h-8 w-20"
+                            className="h-9 w-full text-base sm:h-8 sm:w-20 sm:text-sm"
                           />
                           <span className="text-muted-foreground">Pass</span>
                           <Input
@@ -238,7 +248,7 @@ export function ExamFormDialog({
                             min={0}
                             value={p.pass}
                             onChange={(e) => setField(s._id, "pass", e.target.value)}
-                            className="h-8 w-16"
+                            className="h-9 w-full text-base sm:h-8 sm:w-16 sm:text-sm"
                           />
                         </div>
                       )}

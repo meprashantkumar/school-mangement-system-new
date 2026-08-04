@@ -31,32 +31,34 @@ export default function Receipt() {
   const student = payment.student || {};
   const invoice = payment.invoice || {};
   const row = (label: string, value: React.ReactNode) => (
-    <div className="flex justify-between border-b border-dashed py-1.5 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+    <div className="flex justify-between gap-3 border-b border-dashed py-1.5 text-sm">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words text-right font-medium">{value}</span>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-muted/30 py-8 print:bg-white print:py-0">
-      <div className="mx-auto max-w-md space-y-4 px-4">
+    <div className="min-h-screen bg-muted/30 py-4 print:bg-white print:py-0 sm:py-8">
+      <div className="mx-auto max-w-md space-y-4 px-3 sm:px-4">
         <div className="flex justify-end gap-2 print:hidden">
-          <Button onClick={() => window.print()}>
+          <Button className="h-11 w-full touch-manipulation sm:h-10 sm:w-auto" onClick={() => window.print()}>
             <Printer className="h-4 w-4" /> Print / Save PDF
           </Button>
         </div>
 
-        <div className="rounded-lg border bg-white p-6 shadow-sm print:border-0 print:shadow-none">
+        <div className="rounded-lg border bg-white p-4 shadow-sm print:border-0 print:shadow-none sm:p-6">
           {/* Header */}
-          <div className="flex items-center justify-between border-b pb-4">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-3 border-b pb-4">
+            <div className="flex min-w-0 items-center gap-2.5">
               <Crest size="sm" />
-              <div>
-                <h1 className="font-heading text-lg font-bold leading-tight">{schoolName}</h1>
+              <div className="min-w-0">
+                <h1 className="font-heading text-base font-bold leading-tight sm:text-lg">
+                  {schoolName}
+                </h1>
                 <p className="text-xs text-muted-foreground">{SCHOOL.address} · Fee Receipt</p>
               </div>
             </div>
-            <QRCodeSVG value={payment.receiptNo || String(id)} size={56} />
+            <QRCodeSVG value={payment.receiptNo || String(id)} size={56} className="shrink-0" />
           </div>
 
           {/* Meta */}

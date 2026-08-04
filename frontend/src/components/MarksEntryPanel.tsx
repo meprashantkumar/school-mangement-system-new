@@ -119,7 +119,7 @@ export function MarksEntryPanel({
             type="button"
             onClick={() => setSubjectId(s.subject)}
             className={cn(
-              "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+              "h-10 touch-manipulation rounded-full border px-3.5 text-sm font-medium transition-colors",
               s.subject === subjectId
                 ? "border-primary bg-primary text-primary-foreground"
                 : "hover:bg-accent"
@@ -131,7 +131,7 @@ export function MarksEntryPanel({
       </div>
 
       {subject && (
-        <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-2 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-sm sm:px-4">
           <span>
             <span className="font-semibold">{subject.name}</span> · Max{" "}
             <span className="font-semibold">{subject.maxMarks}</span> · Pass {subject.passMarks}
@@ -158,15 +158,18 @@ export function MarksEntryPanel({
             const key = `${st._id}:${subjectId}`;
             const cell = local[key] || { value: "", absent: false, status: "idle" as CellStatus };
             return (
-              <div key={st._id} className="flex items-center gap-3 rounded-xl border bg-card p-3">
-                <div className="w-7 shrink-0 text-center text-sm font-semibold text-muted-foreground">
+              <div
+                key={st._id}
+                className="flex items-center gap-2 rounded-xl border bg-card p-2.5 sm:gap-3 sm:p-3"
+              >
+                <div className="w-6 shrink-0 text-center text-sm font-semibold text-muted-foreground sm:w-7">
                   {st.rollNo || i + 1}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{st.name}</p>
-                  <p className="text-xs text-muted-foreground">Adm {st.admissionNo}</p>
+                  <p className="truncate text-xs text-muted-foreground">Adm {st.admissionNo}</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                   <span className="w-4">
                     {cell.status === "saving" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                     {cell.status === "saved" && <Check className="h-4 w-4 text-emerald-600" />}
@@ -184,7 +187,7 @@ export function MarksEntryPanel({
                     onBlur={() => commit(st._id)}
                     onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                     className={cn(
-                      "h-11 w-20 rounded-lg border-2 text-center text-base font-semibold outline-none transition-colors",
+                      "h-11 w-16 rounded-lg border-2 text-center text-base font-semibold outline-none transition-colors sm:w-20",
                       cell.status === "error"
                         ? "border-rose-400"
                         : cell.value.trim() !== ""
@@ -199,7 +202,7 @@ export function MarksEntryPanel({
                     onClick={() => toggleAbsent(st._id)}
                     aria-label="Mark absent"
                     className={cn(
-                      "flex h-11 w-11 items-center justify-center rounded-lg border-2 text-sm font-bold transition-colors",
+                      "flex h-11 w-11 touch-manipulation select-none items-center justify-center rounded-lg border-2 text-sm font-bold transition-colors active:scale-95",
                       cell.absent
                         ? "border-rose-600 bg-rose-500 text-white"
                         : "border-rose-200 text-rose-600 hover:bg-rose-50"

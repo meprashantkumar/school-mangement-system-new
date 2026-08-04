@@ -22,8 +22,9 @@ interface ExamItem {
 }
 
 /** Class timetable + exam date sheets for the parent's children. Renders nothing
- *  until the school has actually set them up. */
-export function PortalTimetable() {
+ *  until the school has actually set them up — `onContent` lets the portal know,
+ *  so it only offers a jump link to a section that actually exists. */
+export function PortalTimetable({ onContent }: { onContent?: (has: boolean) => void }) {
   const [config, setConfig] = useState<{ periods: PeriodSlot[]; workingDays: number[] }>({
     periods: [],
     workingDays: [1, 2, 3, 4, 5, 6],
@@ -42,10 +43,15 @@ export function PortalTimetable() {
   const withTimetable = items.filter((i) => i.slots.length > 0);
   const withExams = examItems.filter((i) => i.exams.some((e) => e.papers.length > 0));
 
+  useEffect(() => {
+    onContent?.(withTimetable.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [withTimetable.length]);
+
   return (
     <>
       {withTimetable.length > 0 && (
-        <section>
+        <section id="timetable" className="scroll-mt-20">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
             <CalendarRange className="h-5 w-5 text-primary" /> Class Timetable
           </h2>
@@ -55,7 +61,7 @@ export function PortalTimetable() {
               it.slots.forEach((s) => (lookup[`${s.day}_${s.period}`] = s));
               return (
                 <Card key={it.student._id}>
-                  <CardHeader>
+                  <CardHeader className="p-4 pb-2 sm:p-6 sm:pb-4">
                     <CardTitle className="text-base">
                       {it.student.name}{" "}
                       <span className="text-sm font-normal text-muted-foreground">
@@ -64,7 +70,7 @@ export function PortalTimetable() {
                       </span>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-2 sm:p-4">
+                  <CardContent className="p-3 pt-0 sm:p-4">
                     <TimetableGrid
                       periods={config.periods}
                       workingDays={config.workingDays}
@@ -84,14 +90,14 @@ export function PortalTimetable() {
       )}
 
       {withExams.length > 0 && (
-        <section>
+        <section id="exam-schedule" className="scroll-mt-20">
           <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
             <CalendarClock className="h-5 w-5 text-primary" /> Exam Schedule
           </h2>
           <div className="space-y-4">
             {withExams.map((it) => (
               <Card key={it.student._id}>
-                <CardHeader>
+                <CardHeader className="p-4 pb-2 sm:p-6 sm:pb-4">
                   <CardTitle className="text-base">
                     {it.student.name}{" "}
                     <span className="text-sm font-normal text-muted-foreground">
@@ -99,7 +105,7 @@ export function PortalTimetable() {
                     </span>
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
                   {it.exams.filter((e) => e.papers.length > 0).map((ex, ei) => (
                     <div key={ei}>
                       <p className="mb-2 font-medium">{ex.examName}</p>
