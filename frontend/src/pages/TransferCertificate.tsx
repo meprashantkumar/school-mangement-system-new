@@ -249,17 +249,22 @@ export default function TransferCertificate() {
               in {hisHer} future studies.
             </p>
 
-            {/* Signatures */}
+            {/* Signatures — the role is printed, never the person's name. Whoever
+                holds the post signs and stamps above the line, so a change of
+                principal never makes a printed certificate wrong, and the app does
+                not have to be touched. */}
             <div className="mt-20 flex items-end justify-between">
               <div className="text-center text-sm text-muted-foreground">
-                <div className="h-10" />
+                <div className="h-16" />
                 <p>Seal</p>
               </div>
               <div className="text-center text-sm">
-                <div className="h-10" />
+                {/* Blank space to sign and stamp in. */}
+                <div className="h-16" />
                 <div className="border-t border-foreground/50 px-10 pt-1">
-                  <p className="font-semibold text-foreground">{SCHOOL.principal.name}</p>
-                  <p className="text-muted-foreground">{SCHOOL.principal.role}</p>
+                  <p className="font-semibold text-foreground">
+                    {SCHOOL.principal.role || "Principal"}
+                  </p>
                 </div>
               </div>
             </div>

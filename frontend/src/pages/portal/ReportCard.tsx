@@ -185,7 +185,9 @@ export default function ReportCard() {
         {/* Footer */}
         <div className="mt-10 grid grid-cols-2 gap-6 text-center text-xs text-muted-foreground sm:grid-cols-3">
           <Sign label="Class Teacher" />
-          <Sign label={`Principal — ${SCHOOL.principal.name}`} />
+          {/* Role only, like the two beside it: whoever signs identifies themselves
+              by signing, and a change of principal never dates a printed card. */}
+          <Sign label="Principal" />
           <Sign label="Parent / Guardian" />
         </div>
       </div>
