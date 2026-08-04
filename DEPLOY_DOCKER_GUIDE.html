@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>School ERP — Docker Deployment Guide (AWS / Oracle)</title>
+<style>
+  @page { size: A4; margin: 12mm 11mm 13mm 11mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b; font-size: 12px; line-height: 1.5;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    background: #f1f5f9;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 40px; }
+  .header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #2563eb 100%);
+    color: #fff; padding: 22px 26px; border-radius: 12px; margin-bottom: 18px;
+  }
+  .header h1 { margin: 0; font-size: 22px; font-weight: 800; }
+  .header p { margin: 6px 0 0; font-size: 12.5px; opacity: .92; }
+  .legend { margin: 12px 0 20px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .tag { display: inline-block; padding: 1px 9px; border-radius: 20px; font-size: 10.5px; font-weight: 700; }
+  .tag.aws { background: #fff3e0; color: #b45309; border: 1px solid #fcd9a8; }
+  .tag.ora { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+  .tag.both{ background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+  .note {
+    background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+    border-radius: 8px; padding: 9px 13px; margin: 10px 0; font-size: 11.5px;
+  }
+  .warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+  .step {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 14px; break-inside: avoid;
+  }
+  .step h2 {
+    margin: 0 0 4px; font-size: 15px; font-weight: 800; color: #1e3a8a;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .step h2 .n {
+    background: #1d4ed8; color: #fff; min-width: 24px; height: 24px; border-radius: 7px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;
+  }
+  .step p { margin: 5px 0; font-size: 12px; }
+  .step ul { margin: 5px 0; padding-left: 18px; }
+  .step li { margin: 2px 0; }
+  b { color: #0f172a; }
+  code.inl { background: #eef2ff; color: #3730a3; padding: 0.5px 5px; border-radius: 4px; font-family: Consolas, monospace; font-size: 11px; }
+  .cmd { position: relative; margin: 8px 0; }
+  .cmd pre {
+    background: #0f172a; color: #e2e8f0; border-radius: 8px; margin: 0;
+    padding: 12px 14px; padding-right: 70px;
+    font-family: Consolas, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .cmd pre .c { color: #7d8ba1; }   /* comment */
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: #2563eb; color: #fff; border: 0; border-radius: 6px;
+    padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .copy-btn:hover { background: #1d4ed8; }
+  .copy-btn.done { background: #16a34a; }
+  table.k { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 11px; }
+  table.k th, table.k td { border: 1px solid #e2e8f0; padding: 5px 7px; text-align: left; vertical-align: top; }
+  table.k th { background: #f8fafc; color: #0f172a; font-weight: 700; }
+  table.k td code.inl { white-space: nowrap; }
+  .footer { text-align: center; color: #64748b; font-size: 10.5px; margin-top: 10px; }
+  @media print {
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+    .copy-btn { display: none; }
+    .cmd pre { padding-right: 14px; }
+    .step { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>School ERP — Deployment Guide (Docker)</h1>
+    <p>Deploy on <b>AWS EC2</b> or <b>Oracle Cloud</b> · one image, one container per school · click any <b>Copy</b> button to grab the command.</p>
+  </div>
+
+  <div class="legend">
+    <span><b>Legend:</b></span>
+    <span><span class="tag both">BOTH</span> do on AWS &amp; Oracle</span>
+    <span><span class="tag aws">AWS</span> AWS only</span>
+    <span><span class="tag ora">ORACLE</span> Oracle only</span>
+  </div>
+
+  <div class="note">
+    <b>What you need:</b> a server (AWS EC2 Ubuntu 22.04+ with ≥2 GB RAM, Oracle Ampere A1 up to 24 GB — Always Free, or any Ubuntu VPS),
+    a domain where you can add DNS records (e.g. <code class="inl">school1.mydomain.in</code>), and your key file.
+    You deploy the <b>same image</b> once per school — only the env file, port and domain differ.
+    <br><br><b>Already deployed and just updating?</b> Go straight to <b>Step 17</b>. <b>Adding a second or third school</b> to a
+    server that's already running one? Everything you need is in <b>Step 15</b> — Steps 1–8 are done once per server, not per school.
+  </div>
+
+  <!-- 1 -->
+  <div class="step">
+    <h2><span class="n">1</span> Create the server + a STATIC IP <span class="tag both">BOTH</span></h2>
+    <ul>
+      <li><span class="tag aws">AWS</span> Launch an EC2 <b>Ubuntu</b> instance (t3.small/medium). Allocate an <b>Elastic IP</b> and associate it. Security Group inbound: <b>22, 80, 443</b>.</li>
+      <li><span class="tag ora">ORACLE</span> Create an <b>Ampere A1 Ubuntu</b> instance. Give it a <b>Reserved Public IP</b> (Oracle's Elastic IP). Add VCN Security List ingress for <b>80</b> and <b>443</b>.</li>
+    </ul>
+    <div class="note warn">Use a <b>static</b> IP (Elastic / Reserved). A default ephemeral IP changes if the box stops/starts and breaks your domain.</div>
+  </div>
+
+  <!-- 2 -->
+  <div class="step">
+    <h2><span class="n">2</span> Connect over SSH <span class="tag both">BOTH</span></h2>
+    <p>Replace the key file and IP. Note the flag is a lowercase <code class="inl">-i</code>.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>ssh -i your-key.pem ubuntu@YOUR_STATIC_IP</pre></div>
+  </div>
+
+  <!-- 3 -->
+  <div class="step">
+    <h2><span class="n">3</span> Add swap <span class="tag ora">ORACLE</span> <span class="tag aws">AWS</span></h2>
+    <p>Recommended on 1 GB boxes. <b>Skip on the 24 GB Oracle A1.</b></p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h</pre></div>
+  </div>
+
+  <!-- 4 -->
+  <div class="step">
+    <h2><span class="n">4</span> Open the host firewall <span class="tag ora">ORACLE</span></h2>
+    <p>Oracle Ubuntu images ship a restrictive firewall. <span class="tag aws">AWS</span> users <b>skip this</b> — the Security Group already handles it.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo ufw allow 22
+sudo ufw allow 80
+sudo ufw allow 443
+sudo ufw --force enable
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo netfilter-persistent save</pre></div>
+  </div>
+
+  <!-- 5 -->
+  <div class="step">
+    <h2><span class="n">5</span> Update the system <span class="tag both">BOTH</span></h2>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo apt-get update &amp;&amp; sudo apt-get upgrade -y</pre></div>
+  </div>
+
+  <!-- 6 -->
+  <div class="step">
+    <h2><span class="n">6</span> Install Docker + Compose <span class="tag both">BOTH</span></h2>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER</pre></div>
+    <div class="note">Now <b>log out and back in</b> (close SSH and reconnect) so <code class="inl">docker</code> works without <code class="inl">sudo</code>. Then verify:</div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker version
+docker compose version</pre></div>
+    <div class="note warn"><b>Common error — &ldquo;permission denied … /var/run/docker.sock&rdquo;.</b>
+      If a later <code class="inl">docker</code> or <code class="inl">docker compose</code> command fails with
+      <code class="inl">permission denied while trying to connect to the docker API at unix:///var/run/docker.sock</code>,
+      your current session hasn't picked up the <code class="inl">docker</code> group yet. Fix it without logging out
+      by running this, then re-run your command:</div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>newgrp docker</pre></div>
+    <p>(Logging out and back in also fixes it.) Confirm Docker now works <b>without sudo</b>:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker ps</pre></div>
+  </div>
+
+  <!-- 7 -->
+  <div class="step">
+    <h2><span class="n">7</span> Install host Nginx + Certbot + Git <span class="tag both">BOTH</span></h2>
+    <p>Nginx (on the host) handles the domain routing + free HTTPS in front of the containers.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo apt-get install -y nginx certbot python3-certbot-nginx git</pre></div>
+  </div>
+
+  <!-- 8 -->
+  <div class="step">
+    <h2><span class="n">8</span> Clone the project <span class="tag both">BOTH</span></h2>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo mkdir -p /opt/sfms &amp;&amp; sudo chown $USER:$USER /opt/sfms
+cd /opt/sfms
+git clone https://github.com/meprashantkumar/school-mangement-system-new.git app
+cd app</pre></div>
+  </div>
+
+  <!-- 9 -->
+  <div class="step">
+    <h2><span class="n">9</span> Configure the first school <span class="tag both">BOTH</span></h2>
+    <p>Copy the template and fill in this school's values.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cp .env.docker.example school1.env
+nano school1.env</pre></div>
+    <p>Set at least: <code class="inl">WEB_PORT=8081</code>, <code class="inl">CLIENT_URL=https://school1.mydomain.in</code>,
+       a strong <code class="inl">MONGO_PASS</code>, a <b>unique</b> <code class="inl">JWT_SECRET</code>,
+       <code class="inl">SCHOOL_NAME</code>, and the <code class="inl">SUPERADMIN_*</code> login.
+       Generate a JWT secret with:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>openssl rand -hex 32</pre></div>
+    <div class="note">Save + exit nano: <b>Ctrl+O</b>, Enter, then <b>Ctrl+X</b>. This file holds secrets — it's gitignored, never commit it.</div>
+    <div class="note"><b>School branding — all 16 variables.</b> The same env file carries the whole public identity. Fill these with <i>this</i> school's details; anything left blank falls back to a built-in default (which is <i>R K Public School</i>, so a blank line on another school shows the wrong name):
+      <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>VITE_SCHOOL_NAME            <span class="c"># "Sunrise Academy" — shown in headers everywhere</span>
+VITE_SCHOOL_PLACE           <span class="c"># "Ranchi" — the subtitle under the name. Blank = "Garhwa"!</span>
+VITE_SCHOOL_FULL_NAME       <span class="c"># "Sunrise Academy, Ranchi" — receipts, report cards</span>
+VITE_SCHOOL_SHORT_NAME      <span class="c"># "SAR" — tight spaces</span>
+VITE_SCHOOL_MONOGRAM        <span class="c"># "SA" — the crest badge (1-3 letters)</span>
+VITE_SCHOOL_TAGLINE         <span class="c"># one line under the name on the home page</span>
+VITE_SCHOOL_INTRO           <span class="c"># the paragraph on the home page</span>
+VITE_SCHOOL_DIRECTOR_NAME   <span class="c"># "Mr. A N Panday"</span>
+VITE_SCHOOL_DIRECTOR_ROLE   <span class="c"># "Director"  (blank = Director)</span>
+VITE_SCHOOL_PRINCIPAL_NAME  <span class="c"># "Mr. S Panday" — also signs report cards</span>
+VITE_SCHOOL_PRINCIPAL_ROLE  <span class="c"># "Principal" (blank = Principal)</span>
+VITE_SCHOOL_ADDRESS         <span class="c"># full postal address — footer + receipts</span>
+VITE_SCHOOL_PHONE           <span class="c"># office phone</span>
+VITE_SCHOOL_EMAIL           <span class="c"># office email</span>
+VITE_SCHOOL_ESTABLISHED     <span class="c"># "1998"</span>
+VITE_SCHOOL_AFFILIATION     <span class="c"># "CBSE" / "JAC"</span></pre></div>
+      These are baked into the site <b>at build time</b>, so they apply when you run the <code class="inl">--build</code> in Step 10. To change them later, edit the env file and re-run with <code class="inl">--build</code> — a plain restart will <b>not</b> pick them up. Editing <code class="inl">frontend/.env</code> on the server does nothing at all: that file is excluded from the Docker build context.</div>
+
+    <div class="note warn"><b><code class="inl">SCHOOL_NAME</code> and <code class="inl">VITE_SCHOOL_NAME</code> are two different settings — set both, to the same value.</b>
+      <code class="inl">VITE_SCHOOL_NAME</code> is the frontend (what parents see in the app). <code class="inl">SCHOOL_NAME</code> is the backend: it prints on <b>receipts</b>, goes out in <b>emails</b>, and now <b>names every backup file</b>. A printed receipt takes its heading from the backend and its address line from the frontend build, so if the two disagree the receipt contradicts itself.</div>
+
+    <div class="note"><b>Money &amp; fee policy — check these before go-live.</b>
+      <ul style="margin:5px 0 0;padding-left:16px">
+        <li><code class="inl">RAZORPAY_KEY_ID</code> / <code class="inl">RAZORPAY_KEY_SECRET</code> — this school's own Razorpay account, so online fees land in its bank. Leave blank to disable online payment (the counter QR still works).</li>
+        <li><code class="inl">SCHOOL_UPI_VPA</code> — this school's UPI id for the counter QR. Parents scanning it pay the school directly with no gateway cut.</li>
+        <li><code class="inl">ONLINE_PLATFORM_FEE_PCT</code> — convenience fee added to online payments, as a <b>percentage</b>. Default <code class="inl">2.5</code>, which covers Razorpay's 2% + 18% GST. Note the <code class="inl">_PCT</code> suffix: a line named <code class="inl">ONLINE_PLATFORM_FEE</code> is silently ignored.</li>
+        <li><code class="inl">LATE_FEE_PER_DAY</code> / <code class="inl">LATE_FEE_MAX</code> — automatic late fee per day past the due date, and its cap. Both default to <code class="inl">0</code> (feature off).</li>
+        <li><code class="inl">DB_NAME</code> — give each school its own (see Step 15; sharing one name makes a wrong-school restore possible).</li>
+      </ul>
+    </div>
+    <div class="note warn"><b>Two things that crash the app / block login if you skip them:</b>
+      <ul style="margin:5px 0 0;padding-left:16px">
+        <li><b>SUPERADMIN_PASSWORD must be at least 6 characters.</b> A shorter one makes the API crash on first boot and login shows a <b>502</b>. (The template's <code class="inl">admin</code> is only 5 — change it.)</li>
+        <li>Use <b>real values</b> for <code class="inl">SUPERADMIN_EMAIL</code> / <code class="inl">SUPERADMIN_PASSWORD</code> — not the <code class="inl">admin@school1.example.com</code> placeholder. Pick an email you own (needed for password resets).</li>
+        <li><code class="inl">WEB_PORT</code> must match the port in your Nginx block (Step 12).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 10 -->
+  <div class="step">
+    <h2><span class="n">10</span> Build &amp; start the school <span class="tag both">BOTH</span></h2>
+    <p>The <code class="inl">-p</code> project name isolates this school's containers and database volume.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose --env-file school1.env -p sfms_school1 up -d --build</pre></div>
+    <p>Check it (use this school's WEB_PORT):</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school1 ps
+curl http://localhost:8081/api/health</pre></div>
+    <p>You should see <code class="inl">{"status":"ok","service":"sfms-api"}</code>.</p>
+    <div class="note warn"><b>Always include <code class="inl">--env-file school1.env</code>.</b> Without it none of your settings load — the port falls back to 8080 and the database starts with no password, so the API crash-loops. If login shows <b>502</b>, or <code class="inl">docker ps</code> shows <code class="inl">api … Restarting</code>, read the exact reason:</div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school1 logs api --tail=30</pre></div>
+    <p>Most common causes: a super-admin password under 6 characters, or a Mongo auth mismatch — fix the value in <code class="inl">school1.env</code>, then re-run the <code class="inl">up</code> command above.</p>
+  </div>
+
+  <!-- 11 -->
+  <div class="step">
+    <h2><span class="n">11</span> Point the domain <span class="tag both">BOTH</span></h2>
+    <p>In your DNS provider add an <b>A record</b>: <code class="inl">school1.mydomain.in → YOUR_STATIC_IP</code>. Wait until it resolves:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>ping school1.mydomain.in</pre></div>
+  </div>
+
+  <!-- 12 -->
+  <div class="step">
+    <h2><span class="n">12</span> Host Nginx reverse proxy <span class="tag both">BOTH</span></h2>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo nano /etc/nginx/sites-available/schools</pre></div>
+    <p>Paste this (one <code class="inl">server</code> block per school — port must match WEB_PORT):</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>server {
+    listen 80;
+    server_name school1.mydomain.in;
+    client_max_body_size 2g;
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}</pre></div>
+    <p>Enable it and reload:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo ln -sf /etc/nginx/sites-available/schools /etc/nginx/sites-enabled/schools
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl reload nginx</pre></div>
+  </div>
+
+  <!-- 13 -->
+  <div class="step">
+    <h2><span class="n">13</span> Get free HTTPS (Certbot) <span class="tag both">BOTH</span></h2>
+    <p>Choose <b>redirect HTTP → HTTPS</b> when asked. Certbot also auto-renews.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot --nginx -d school1.mydomain.in</pre></div>
+  </div>
+
+  <!-- 14 -->
+  <div class="step">
+    <h2><span class="n">14</span> Verify <span class="tag both">BOTH</span></h2>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>curl -I https://school1.mydomain.in
+curl https://school1.mydomain.in/api/health</pre></div>
+    <p>Open the site in a browser, log in with your <code class="inl">SUPERADMIN_EMAIL</code> / <code class="inl">SUPERADMIN_PASSWORD</code>, then <b>change the super-admin password in the app</b>.</p>
+  </div>
+
+  <!-- 15 -->
+  <div class="step">
+    <h2><span class="n">15</span> Add another school (2nd, 3rd, 4th…) on its own domain <span class="tag both">BOTH</span></h2>
+    <p>One server runs as many schools as its RAM allows. Each school is a <b>complete, isolated stack</b> — its own MongoDB container, its own data volume, its own API and web container. Nothing is shared except the host Nginx and the Docker engine, so one school can never see another's data. <b>Repeat this one section per school</b>; nothing in Steps 1–8 is needed again.</p>
+
+    <h3 style="margin:10px 0 2px;font-size:12.5px;color:#1e3a8a">A. Plan the three values that make it separate</h3>
+    <table class="k">
+      <tr><th style="width:23%">&nbsp;</th><th>School 1</th><th>School 2</th><th>School 3</th></tr>
+      <tr><td><b>Env file</b></td><td><code class="inl">school1.env</code></td><td><code class="inl">school2.env</code></td><td><code class="inl">school3.env</code></td></tr>
+      <tr><td><b>Project name</b> (<code class="inl">-p</code>)</td><td><code class="inl">sfms_school1</code></td><td><code class="inl">sfms_school2</code></td><td><code class="inl">sfms_school3</code></td></tr>
+      <tr><td><b>WEB_PORT</b></td><td><code class="inl">8081</code></td><td><code class="inl">8082</code></td><td><code class="inl">8083</code></td></tr>
+      <tr><td><b>DB_NAME</b></td><td><code class="inl">rkps</code></td><td><code class="inl">sunrise</code></td><td><code class="inl">stmary</code></td></tr>
+      <tr><td><b>Domain</b></td><td>school1.mydomain.in</td><td>sunrise.mydomain.in</td><td>stmary.mydomain.in</td></tr>
+    </table>
+    <p>The <code class="inl">-p</code> project name is what isolates everything: it prefixes the containers <i>and</i> the data volume, so school 2's database lives in <code class="inl">sfms_school2_mongo_data</code> and school 1's in <code class="inl">sfms_school1_mongo_data</code>. The domains can also be completely different registered domains — nothing here assumes a shared parent domain.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">B. What MUST differ between the env files</h3>
+    <table class="k">
+      <tr><th style="width:34%">Setting</th><th>Why it must be its own</th></tr>
+      <tr><td><code class="inl">WEB_PORT</code></td><td><b>Hard failure if shared</b> — two containers can't bind one host port, so the second school won't start.</td></tr>
+      <tr><td><code class="inl">RAZORPAY_KEY_ID</code><br><code class="inl">RAZORPAY_KEY_SECRET</code></td><td><b>Money.</b> Shared keys send both schools' online fees into one bank account.</td></tr>
+      <tr><td><code class="inl">SCHOOL_UPI_VPA</code></td><td><b>Money.</b> The counter QR must pay the school the parent is standing in.</td></tr>
+      <tr><td><code class="inl">DB_NAME</code></td><td>See the warning below — this one is silent and unrecoverable.</td></tr>
+      <tr><td><code class="inl">CLIENT_URL</code></td><td>This school's own <code class="inl">https://</code> domain. Used for CORS and for links inside emails.</td></tr>
+      <tr><td><code class="inl">SCHOOL_NAME</code> + all 16 <code class="inl">VITE_SCHOOL_*</code></td><td>The branding itself. <code class="inl">SCHOOL_NAME</code> also names this school's backup files.</td></tr>
+      <tr><td><code class="inl">SUPERADMIN_EMAIL</code><br><code class="inl">SUPERADMIN_PASSWORD</code></td><td>Each school's office gets its own administrator account.</td></tr>
+      <tr><td><code class="inl">JWT_SECRET</code>, <code class="inl">MONGO_PASS</code></td><td>Hygiene: one school's leaked secret must not open the other.</td></tr>
+      <tr><td><code class="inl">BACKUP_REMOTE</code></td><td>A separate Drive folder per school, e.g. <code class="inl">gdrive:sfms-backups-school2</code>.</td></tr>
+    </table>
+    <p><b>Fine to keep identical:</b> <code class="inl">MONGO_USER</code>, <code class="inl">JWT_EXPIRE</code>, <code class="inl">ONLINE_PLATFORM_FEE_PCT</code>, <code class="inl">LATE_FEE_PER_DAY</code>, <code class="inl">LATE_FEE_MAX</code>, <code class="inl">MONGO_CACHE_GB</code>, and the <code class="inl">EMAIL_*</code> block if one mailbox sends for both.</p>
+
+    <div class="note warn"><b>⚠ Give every school its own <code class="inl">DB_NAME</code> — before any data is entered.</b>
+      Day to day, two schools both using <code class="inl">sfms</code> is harmless: separate Mongo containers, separate volumes, no mixing. The danger is at <b>restore</b> time. A <code class="inl">mongodump</code> archive carries the name of the database it came from and will only load into a database of that same name — so if both are called <code class="inl">sfms</code>, <b>school 1's backup file restores cleanly into school 2</b>. No error, no mismatch, no warning; you have simply overwritten the wrong school. Distinct names turn that mistake into a harmless refusal.
+      <br><br>Changing <code class="inl">DB_NAME</code> <i>after</i> a school has records does not move anything — the API just connects to a new empty database and the data looks like it vanished (it's still there under the old name, merely unused). Renaming needs a dump and reload, and <b>the order matters</b>: copy the data out <i>while the env file still points at the old name</i>. Renaming <code class="inl">sfms</code> → <code class="inl">sunrise</code>:
+      <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre><span class="c"># 1. Dump FIRST — school2.env still says DB_NAME=sfms at this point</span>
+cd /opt/sfms/app
+docker compose --env-file school2.env -p sfms_school2 exec -T api sh -c \
+  'mongodump --uri="$MONGO_URI" --gzip --archive' > /tmp/old.archive.gz
+
+<span class="c"># 2. Reload it under the new name (--nsTo does the renaming)</span>
+docker compose --env-file school2.env -p sfms_school2 exec -T api sh -c \
+  'mongorestore --uri="$MONGO_URI" --gzip --archive --nsFrom="sfms.*" --nsTo="sunrise.*"' < /tmp/old.archive.gz
+
+<span class="c"># 3. NOW point the app at the new name</span>
+nano school2.env                                              <span class="c"># DB_NAME=sunrise</span>
+docker compose --env-file school2.env -p sfms_school2 up -d
+
+<span class="c"># 4. Check the data is there, then drop the old database</span>
+docker compose -p sfms_school2 exec -T api sh -c \
+  'mongosh "$MONGO_URI" --quiet --eval "db.students.countDocuments()"'</pre></div>
+      Do <b>not</b> drop the old <code class="inl">sfms</code> database until step 4 shows the expected student count. If the count is 0, the app is looking at an empty database — re-check <code class="inl">DB_NAME</code> and that step 2 actually ran.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">C. Create and start the new school</h3>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cd /opt/sfms/app
+cp .env.docker.example school2.env
+nano school2.env          <span class="c"># set WEB_PORT=8082, DB_NAME, domain, branding, keys</span>
+
+docker compose --env-file school2.env -p sfms_school2 up -d --build</pre></div>
+    <p>Confirm it's healthy on <b>its own</b> port before touching Nginx:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school2 ps
+curl http://localhost:8082/api/health</pre></div>
+    <p>You want <code class="inl">{"status":"ok","service":"sfms-api"}</code> and the api container <code class="inl">Up</code>, not <code class="inl">Restarting</code>. School 1 keeps running throughout — you never stop it to add another school.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">D. Point the new domain at the same server</h3>
+    <p>In your DNS provider add an <b>A record</b> for the new domain to the <b>same static IP</b> — every school on this box shares one IP, and Nginx tells them apart by <code class="inl">server_name</code>.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sunrise.mydomain.in.   A   YOUR_STATIC_IP</pre></div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>ping sunrise.mydomain.in</pre></div>
+    <p>Wait until it answers with your server's IP. Certbot in step F <b>will fail</b> if DNS hasn't propagated yet.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">E. Add a second Nginx server block</h3>
+    <p>Open the same file you made in Step 12 and <b>append</b> another block — don't replace the first one:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo nano /etc/nginx/sites-available/schools</pre></div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>server {
+    listen 80;
+    server_name sunrise.mydomain.in;        <span class="c"># the NEW domain</span>
+    client_max_body_size 2g;
+    location / {
+        proxy_pass http://127.0.0.1:8082;   <span class="c"># the NEW school's WEB_PORT</span>
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}</pre></div>
+    <p>Only two lines change per school: <code class="inl">server_name</code> and the <code class="inl">proxy_pass</code> port. Test the config and reload:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</pre></div>
+    <div class="note"><code class="inl">reload</code> is graceful — school 1 stays up and no parent is disconnected. Never use <code class="inl">restart</code> here.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">F. HTTPS for the new domain</h3>
+    <p>Certbot only touches the domain you name, so school 1's certificate is left alone. Choose <b>redirect HTTP → HTTPS</b> when asked.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot --nginx -d sunrise.mydomain.in</pre></div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>curl -I https://sunrise.mydomain.in
+curl https://sunrise.mydomain.in/api/health</pre></div>
+    <p>Open it in a browser: you should see the <b>new school's</b> name and crest, not school 1's. If you see school 1's branding, the <code class="inl">VITE_SCHOOL_*</code> lines were blank or missing when you built — fill them in and re-run the <code class="inl">up -d --build</code>.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">G. Backups for the new school</h3>
+    <p><b>rclone does not need connecting again.</b> The config lives on the host at <code class="inl">./rclone/rclone.conf</code> and every school's container mounts that same file, so once you've done Step 16 on this box, all schools can already reach Drive. Just give the new school its own folder and its own cron line:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school2 exec api rclone lsd gdrive:
+docker compose -p sfms_school2 exec api rclone mkdir gdrive:sfms-backups-school2</pre></div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo crontab -e</pre></div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>15 2 * * * cd /opt/sfms/app &amp;&amp; docker compose --env-file school2.env -p sfms_school2 exec -T api sh -c 'mongodump --uri="$MONGO_URI" --gzip --archive | rclone rcat "$BACKUP_REMOTE/school2-$(date +\%F).archive.gz"' >> /var/log/sfms-backup-school2.log 2>&amp;1</pre></div>
+    <div class="note"><b>Stagger the times</b> — 2:00 for school 1, 2:15 for school 2, 2:30 for school 3. Two <code class="inl">mongodump</code>s at once on a small box fight for CPU and disk. The in-app <b>Back up to Google Drive</b> button also works per school, and its filenames now start with that school's <code class="inl">SCHOOL_NAME</code> so the two are never confused in Drive.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">H. How many schools fit?</h3>
+    <p>Each school adds one MongoDB, one API and one Nginx container. Mongo is the memory-hungry one, and <code class="inl">MONGO_CACHE_GB</code> (default <b>1</b>) caps its cache. Rough guide for schools of 500–1000 students:</p>
+    <table class="k">
+      <tr><th style="width:25%">Server RAM</th><th>Comfortable schools</th></tr>
+      <tr><td>2 GB (+ swap)</td><td>1</td></tr>
+      <tr><td>4 GB</td><td>2</td></tr>
+      <tr><td>8 GB</td><td>4–5</td></tr>
+      <tr><td>24 GB (Oracle A1)</td><td>10+</td></tr>
+    </table>
+    <p>Disk and bandwidth are never the limit — a 1000-student school's database stays well under 1 GB a year.</p>
+
+    <div class="note"><b>Handy per-school commands</b> — every one of them needs the right <code class="inl">-p</code>, which is how you pick the school:
+      <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school2 ps                    <span class="c"># status</span>
+docker compose -p sfms_school2 logs api --tail=50    <span class="c"># why is it unhappy</span>
+docker compose -p sfms_school2 restart api           <span class="c"># restart just this school</span>
+docker compose -p sfms_school2 down                  <span class="c"># stop it (data volume is KEPT)</span>
+docker volume ls | grep mongo_data                   <span class="c"># see each school's volume</span></pre></div>
+      <code class="inl">down</code> without <code class="inl">-v</code> never deletes data. <b>Never</b> add <code class="inl">-v</code> unless you intend to erase that school permanently.</div>
+  </div>
+
+  <!-- 16 -->
+  <div class="step">
+    <h2><span class="n">16</span> Nightly backup to Google Drive <span class="tag both">BOTH</span></h2>
+    <p><b>First-time setup — connect rclone to Google Drive (once per SERVER, not per school).</b> This runs inside a school's api container but is saved on the host at <code class="inl">./rclone/rclone.conf</code>, and every school on the box mounts that same file — so do it once and all schools can reach Drive. Use <code class="inl">-it</code> so the prompts are interactive:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school1 exec -it api rclone config</pre></div>
+    <p>Answer the prompts like this:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>n                      <span class="c"># New remote</span>
+name&gt; gdrive           <span class="c"># MUST be "gdrive" — it matches BACKUP_REMOTE in your env file</span>
+Storage&gt; drive         <span class="c"># Google Drive</span>
+client_id&gt;             <span class="c"># paste your own, or Enter to leave blank (see note)</span>
+client_secret&gt;         <span class="c"># paste your own, or Enter to leave blank</span>
+scope&gt; 1               <span class="c"># 1 = full access</span>
+service_account_file&gt;  <span class="c"># Enter (blank)</span>
+Edit advanced config? &gt; n
+Use auto config? &gt; n    <span class="c"># ★ NO — the server is headless, it has no browser</span></pre></div>
+    <div class="note">Leaving <code class="inl">client_id</code>/<code class="inl">client_secret</code> blank uses rclone's shared key (works, just slower / rate-limited). For your own key, create an <b>OAuth client (Desktop app)</b> in Google Cloud Console → APIs &amp; Services → Credentials.</div>
+    <p>rclone then prints a <code class="inl">rclone authorize "drive" "&hellip;"</code> line and waits at <code class="inl">config_token&gt;</code>. <b>Leave the server terminal open</b> and run that <b>exact</b> line on your <b>Windows PC</b> (the blob carries your client id/secret). Install rclone there first:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>winget install Rclone.Rclone</pre></div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>rclone authorize "drive" "&lt;paste the exact blob the server printed&gt;"</pre></div>
+    <p>A browser opens → sign into the backup Google account → <b>Allow</b>. Copy the <code class="inl">{ &hellip; }</code> JSON it prints, paste it into the server's waiting <code class="inl">config_token&gt;</code> prompt, then answer <code class="inl">n</code> (not a Shared Drive), <code class="inl">y</code> (confirm), <code class="inl">q</code> (quit).</p>
+
+    <div class="note warn"><b>403 &mdash; &ldquo;Google Drive API has not been used in project &hellip; or it is disabled&rdquo;.</b>
+      If you used your <b>own</b> client id/secret, you must enable the Drive API on that Google Cloud project <b>once</b>: open <code class="inl">https://console.cloud.google.com/apis/api/drive.googleapis.com</code>, select the same project, click <b>Enable</b>, and wait ~2 minutes. Also answer <b>No</b> to <i>&ldquo;Configure this as a Shared Drive (Team Drive)?&rdquo;</i> — you're backing up to a normal Drive; answering Yes makes rclone list Team Drives, which triggers this same 403.
+    </div>
+
+    <div class="note warn"><b>Backups stop after ~7 days? Publish the OAuth consent screen.</b>
+      If you used your own client id/secret and the project's OAuth consent screen is in <b>Testing</b> mode, Google expires the refresh token after 7 days and backups quietly start failing. Fix once: Google Cloud Console → <b>APIs &amp; Services → OAuth consent screen</b> → <b>Publish app</b> (move to <i>In production</i>). For a single owner this works even without Google verification — just dismiss the &ldquo;unverified app&rdquo; notice.
+    </div>
+
+    <div class="note warn"><b>Windows error — &ldquo;bind: An attempt was made to access a socket in a way forbidden by its access permissions&rdquo; on port 53682.</b>
+      Docker Desktop / WSL reserves that port, so rclone can't open its login callback. Fix: in an <b>Administrator</b> Command Prompt, temporarily stop Windows NAT, run the authorize, then start NAT again.
+      <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>net stop winnat
+rclone authorize "drive" "&lt;paste the exact blob the server printed&gt;"
+net start winnat</pre></div>
+      <code class="inl">net stop winnat</code> needs an elevated prompt — Start → type <b>cmd</b> → right-click → <b>Run as administrator</b>. Restarting winnat restores Docker Desktop networking.
+    </div>
+
+    <p>Verify the connection and create the school's backup folder:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school1 exec api rclone lsd gdrive:
+docker compose -p sfms_school1 exec api rclone mkdir gdrive:sfms-backups-school1</pre></div>
+
+    <p>Then schedule a 2 AM dump that streams straight to Drive. Edit the host crontab:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo crontab -e</pre></div>
+    <p>Add one line per school (note the escaped <code class="inl">\%</code> — cron needs it):</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>0 2 * * * cd /opt/sfms/app &amp;&amp; docker compose --env-file school1.env -p sfms_school1 exec -T api sh -c 'mongodump --uri="$MONGO_URI" --gzip --archive | rclone rcat "$BACKUP_REMOTE/school1-$(date +\%F).archive.gz"' >> /var/log/sfms-backup-school1.log 2>&amp;1</pre></div>
+    <div class="note">The in-app <b>Backup → “Back up to Google Drive now”</b> button also works once rclone is connected. Your data lives in the <code class="inl">mongo_data</code> volume — this backs it up <b>off the server</b>.</div>
+
+    <p style="margin-top:12px"><b>Change the Google (Gmail) account later?</b> Do it <b>on the server</b> (not your laptop) — rclone runs the backups there, so changing it locally has no effect. Re-authorize the same remote to the new account:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre><span class="c"># non-Docker box (SSH into the server first):</span>
+rclone config reconnect gdrive:
+
+<span class="c"># Docker setup:</span>
+docker compose -p sfms_school1 exec api rclone config reconnect gdrive:</pre></div>
+    <p>When it asks <i>"Use web browser to automatically authenticate?"</i> answer <b>No</b> (the server has no browser). It prints an <code class="inl">rclone authorize "drive" …</code> line — run that on a machine <b>with a browser</b> (your PC), sign in with the <b>new Gmail</b>, then paste the token back into the server prompt. Verify the account switched:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>rclone about gdrive:
+rclone lsd gdrive:</pre></div>
+    <div class="note">Old backups stay in the old account's Drive; new backups go to the new account from now on.</div>
+  </div>
+
+  <!-- 17 -->
+  <div class="step">
+    <h2><span class="n">17</span> Update to the latest code <span class="tag both">BOTH</span></h2>
+    <p>Pull the newest code from GitHub and rebuild the image. Your <b>database volume is untouched</b> — students, fees and payments stay put. Do this per school (one <code class="inl">up</code> line each).</p>
+    <div class="note warn"><b>New env lines your existing school files won't have yet.</b> Two rounds of settings have been added since the first deployments. <b>Before</b> the rebuild below:
+      <ol style="margin:5px 0 0;padding-left:18px">
+        <li>Run <code class="inl">git pull origin main</code> first — this refreshes <code class="inl">.env.docker.example</code>.</li>
+        <li>Copy any missing lines from it into each school's env file and fill in that school's real values: the 16 <code class="inl">VITE_SCHOOL_*</code> branding lines (Step 9), plus <code class="inl">SCHOOL_NAME</code>, <code class="inl">DB_NAME</code>, <code class="inl">LATE_FEE_PER_DAY</code>, <code class="inl">LATE_FEE_MAX</code>, <code class="inl">BACKUP_REMOTE</code> and <code class="inl">ONLINE_PLATFORM_FEE_PCT</code>.</li>
+        <li>Then run the <code class="inl">up -d --build</code> command below — the <code class="inl">--build</code> is what bakes the branding in.</li>
+      </ol>
+      Skip it and the site still works, but shows the default <i>R K Public School</i> branding and quietly runs with late fees off. A plain restart won't apply branding changes — it must be a <code class="inl">--build</code>. Careful with <code class="inl">DB_NAME</code> on a school that <b>already has data</b>: changing it points the API at a new empty database (see Step 15).</div>
+
+    <div class="note"><b>What the latest code adds.</b> Nothing here needs configuration — it's listed so you know what changes for the office after the rebuild:
+      <ul style="margin:5px 0 0;padding-left:16px">
+        <li><b>Mobile-number login for parents and teachers.</b> Most parents have no email, so the office now issues logins: <b>Students → 🔑</b> on a row, or <b>Give class access</b> for a whole class at once (printable slips, or one shared password). Forgotten passwords are reset by the office, not by email. Existing email logins keep working.</li>
+        <li><b>Automatic one-time migration on first boot.</b> The new code rebuilds two indexes (email/phone become unique + sparse) and normalises stored mobile numbers into one form, so a number saved as <code class="inl">08235083251</code> still matches its children. It's idempotent and needs no action — you'll just see it in <code class="inl">logs api</code>.</li>
+        <li><b>Fee generation:</b> tick <b>which classes</b> and <b>which fees</b> to bill each month — so an exam fee in a month when only Class 2 sits an exam goes to Class 2 alone. Adds <b>Undo a Month</b>, and fixes a bug that could bill a student twice after a fee structure was edited.</li>
+        <li><b>Teacher and parent dashboards rebuilt for phones</b> — that's where they're actually used.</li>
+        <li><b>Online payment fix.</b> A parent logging in by mobile previously got a 403 when paying; that check also let a parent open receipts belonging to other children. Both closed.</li>
+        <li><b>Backup files are named after the school</b> (from <code class="inl">SCHOOL_NAME</code>) instead of a fixed <code class="inl">RKPS</code>, so two schools' archives can't be mixed up in Drive.</li>
+      </ul>
+    </div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cd /opt/sfms/app
+git pull origin main
+docker compose --env-file school1.env -p sfms_school1 up -d --build
+docker compose --env-file school2.env -p sfms_school2 up -d --build</pre></div>
+    <p>Then confirm each school is healthy on its own WEB_PORT:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker compose -p sfms_school1 ps
+curl http://localhost:8081/api/health</pre></div>
+    <p>You should see <code class="inl">{"status":"ok","service":"sfms-api"}</code> and the api container <code class="inl">Up</code> (not <code class="inl">Restarting</code>).</p>
+    <div class="note warn"><b>Backup button not working? You're on old code.</b> The in-app <b>“Back up to Google Drive now” / “Download backup”</b> feature only exists in newer commits. If the button errors with
+      <code class="inl">spawn mongodump ENOENT</code> or <i>“mongodb-database-tools not installed”</i>, that box simply hasn't been updated yet — run the <code class="inl">git pull</code> + rebuild above. The <code class="inl">mongodump</code> tool itself is baked <b>into the image</b> (installed by the Dockerfile), so once you're on the latest code the button works with no extra install.</div>
+    <div class="note"><b>If <code class="inl">git pull</code> complains about local changes:</b> your <code class="inl">.env</code> files are gitignored, so they're never touched. To force the code to exactly match GitHub, run <code class="inl">git reset --hard origin/main</code> then re-run the rebuild. This only resets tracked <b>code</b> — it never deletes your env files or the database volume.</div>
+    <div class="note">Old images pile up over time. Reclaim disk after a few updates with <code class="inl">docker image prune -f</code> (safe — only removes dangling images, never volumes).</div>
+  </div>
+
+  <!-- 18 -->
+  <div class="step">
+    <h2><span class="n">18</span> Change a school's settings (edit its <code class="inl">.env</code>) <span class="tag both">BOTH</span></h2>
+    <p>To change any setting — school name, super-admin email, UPI id, backup remote, etc. — edit that school's env file and <b>re-run the same <code class="inl">up</code> command</b>. Compose recreates the container with the new values. No <code class="inl">--build</code> is needed when only the env changed (the code is the same).</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cd /opt/sfms/app
+nano school1.env                                              <span class="c"># edit the values, Ctrl+O Enter, Ctrl+X</span>
+docker compose --env-file school1.env -p sfms_school1 up -d   <span class="c"># apply — recreates the container</span>
+docker compose -p sfms_school1 logs api --tail=20             <span class="c"># confirm it came back up</span></pre></div>
+    <div class="note">Combining a code update <b>and</b> an env change? Just add <code class="inl">--build</code> to the same command: <code class="inl">docker compose --env-file school1.env -p sfms_school1 up -d --build</code>.</div>
+    <div class="note warn"><b>Two env values need a matching change elsewhere:</b>
+      <ul style="margin:5px 0 0;padding-left:16px">
+        <li><b>Changed <code class="inl">WEB_PORT</code>?</b> Update this school's Nginx <code class="inl">proxy_pass</code> port (Step 12) to match, then <code class="inl">sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code> — otherwise you get a <b>502</b>.</li>
+        <li><b>Changed the domain / <code class="inl">CLIENT_URL</code>?</b> Update <code class="inl">server_name</code> in the Nginx block, reload Nginx, and re-run <code class="inl">sudo certbot --nginx -d newdomain</code> for a fresh certificate.</li>
+      </ul>
+    </div>
+    <div class="note warn"><b>⚠ Do NOT change <code class="inl">MONGO_USER</code> / <code class="inl">MONGO_PASS</code> after first boot.</b> Those only create the database user <b>once</b>, on the very first start when the <code class="inl">mongo_data</code> volume is still empty. Editing them later does <b>not</b> update the existing DB user, so the api can no longer authenticate and crash-loops with an auth error (login shows <b>502</b>). If you truly must rotate the DB password, change it inside MongoDB itself — or wipe the volume, which <b>erases all data</b> (take a backup first). To change the <b>super-admin</b> password after go-live, do it in the app (Profile → change password), not in the env file.</div>
+  </div>
+
+  <!-- 19 -->
+  <div class="step">
+    <h2><span class="n">19</span> Make it future-proof <span class="tag both">BOTH</span></h2>
+    <ul>
+      <li>Pin base images to a digest in the Dockerfiles (e.g. <code class="inl">node:20.20.2-bookworm-slim@sha256:…</code>) so they never drift.</li>
+      <li>Save the built image with your backups, so it works even if a base image disappears:</li>
+    </ul>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker save sfms_school1-api | gzip > sfms-api-image.tar.gz</pre></div>
+    <div class="note">Also allocate the <b>static IP</b> (Step 1), keep the repo on GitHub, and store the per-school <code class="inl">.env</code> files safely (they hold your secrets).</div>
+  </div>
+
+  <!-- 20 -->
+  <div class="step">
+    <h2><span class="n">20</span> Several schools on ONE small box (1 GB) <span class="tag aws">SMALL BOX</span></h2>
+
+    <p>Steps 1–19 give every school its <b>own MongoDB</b> and put <b>host Nginx + Certbot</b> in front. That is the right shape when the box has RAM to spare — a database server per school is the strongest boundary you can draw.</p>
+
+    <div class="warn"><b>It does not fit on 1 GB.</b> One <code class="inl">mongod</code> wants roughly 250 MB for its cache alone, so three of them claim ~750 MB before the three Node APIs get a single byte. The box swaps constantly, or the OOM killer starts picking off containers.</div>
+
+    <p>So this track is a second way to run <b>the same images</b>, built for a small box:</p>
+    <ul>
+      <li><b>One MongoDB</b> holding <b>one database per school</b> (<code class="inl">sfms_school1</code>, <code class="inl">sfms_school2</code>, …) instead of one server each.</li>
+      <li><b>Caddy</b> instead of host Nginx + Certbot. It gets and renews each domain's HTTPS certificate by itself — no <code class="inl">certbot</code>, no renewal cron, no reload — and it gzips responses, which the container Nginx did not.</li>
+    </ul>
+    <p>Schools stay separate: own database, own JWT secret, own containers, own branding. Only the database <i>server</i> is shared. Two files drive it, both in <code class="inl">deploy/multi-school/</code>: <code class="inl">docker-compose.infra.yml</code> (Caddy + Mongo, once per box) and <code class="inl">docker-compose.school.yml</code> (api + web, once per school).</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">A. Prepare the box</h3>
+    <p>Ubuntu, ports <b>22, 80, 443</b> open in the AWS security group, a <b>static/Elastic IP</b>, and <b>swap</b> (Step 3) — on 1 GB, swap is what stops the frontend build being killed. Then Docker (Step 6). You do <b>not</b> need host Nginx or Certbot on this track, so Step 7 and Steps 11–13 are skipped.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER      # log out and back in so docker works without sudo
+git clone https://github.com/YOUR_USER/YOUR_REPO.git app
+cd app/deploy/multi-school</pre></div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">B. DNS first</h3>
+    <p>Point an <b>A record</b> for every domain at the box <i>before</i> starting Caddy. Caddy proves ownership over port 80, so a domain that does not resolve yet just fails and retries.</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>school1.mydomain.in   A   YOUR_STATIC_IP
+school2.mydomain.in   A   YOUR_STATIC_IP
+school3.mydomain.in   A   YOUR_STATIC_IP</pre></div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">C. Shared services (once per box)</h3>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cp infra.env.example infra.env
+nano infra.env        # ACME_EMAIL, MONGO_USER, MONGO_PASS (openssl rand -hex 24)
+chmod 600 infra.env
+
+nano Caddyfile        # one site block per domain -> that school's web container
+
+docker compose --env-file infra.env -f docker-compose.infra.yml -p sfms_infra up -d</pre></div>
+    <div class="note">Certificates live in the <code class="inl">caddy_data</code> volume. Keep it: losing it means re-issuing every certificate, and Let's Encrypt allows only 5 per domain per week.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">D. Each school</h3>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cp school.env.example school1.env
+nano school1.env
+chmod 600 school1.env
+
+docker compose --env-file school1.env -f docker-compose.school.yml -p sfms_school1 up -d --build</pre></div>
+    <p>Repeat per school. Build them <b>one at a time</b> on a small box — two <code class="inl">vite build</code>s at once will exhaust the RAM.</p>
+
+    <div class="warn"><b>Must differ per school:</b> <code class="inl">SCHOOL_KEY</code>, <code class="inl">DB_NAME</code>, <code class="inl">JWT_SECRET</code>, <code class="inl">CLIENT_URL</code>. Give two schools the same <code class="inl">DB_NAME</code> and they silently share one set of students, with no error to warn you. Share a <code class="inl">JWT_SECRET</code> and a login for one school is accepted by the other.<br>
+    <b>Must be the same:</b> <code class="inl">MONGO_USER</code> / <code class="inl">MONGO_PASS</code> — it is one database server, and those are its root credentials.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">E. Verify</h3>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker ps                                    # infra + 2 containers per school
+curl https://school1.mydomain.in/api/health  # {"status":"ok","service":"sfms-api"}
+curl -s https://school1.mydomain.in/ | grep -o '&lt;title&gt;[^&lt;]*'   # this school's own name
+docker exec school1-api sh -c 'echo $MONGO_URI'   # check it names THIS school's DB
+free -m                                      # headroom left</pre></div>
+    <p>Worth confirming isolation directly: log in on school 1, then send that token to school 2 — it must come back <b>401</b>, because the secrets differ.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">F. Adding a 4th school later</h3>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre># 1. DNS A record for school4.mydomain.in -> YOUR_STATIC_IP
+# 2. add a block to the Caddyfile:
+#      school4.mydomain.in {
+#              import school school4-web
+#      }
+docker exec sfms-caddy caddy reload --config /etc/caddy/Caddyfile
+
+# 3. its own env file, then bring it up
+cp school.env.example school4.env && nano school4.env
+docker compose --env-file school4.env -f docker-compose.school.yml -p sfms_school4 up -d --build</pre></div>
+    <p>The Caddy reload is graceful: no dropped connections, and existing certificates are not re-issued. The other schools are untouched.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">G. Updating to new code</h3>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>cd ~/app &amp;&amp; git pull
+cd deploy/multi-school
+for s in school1 school2 school3; do
+  docker compose --env-file $s.env -f docker-compose.school.yml -p sfms_$s up -d --build
+done</pre></div>
+    <p>One at a time, and the databases are untouched. Remember branding is compiled in, so an edit to any <code class="inl">VITE_SCHOOL_*</code> value needs <code class="inl">--build</code>, not just a restart.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">H. Why the two networks</h3>
+    <p>Every school's compose file has services literally named <code class="inl">api</code> and <code class="inl">web</code>. Put them all on one shared Docker network and those names are ambiguous — one school's Nginx could resolve <code class="inl">api</code> to <b>another school's backend</b>. That is a data leak, and it would depend on Docker's DNS ordering rather than on anything you control.</p>
+    <p>So there are two networks, and which container joins which is the whole point:</p>
+    <ul>
+      <li><code class="inl">sfms_edge</code> — Caddy + every <code class="inl">web</code>. Caddy asks for <code class="inl">school1-web</code>, which is unique.</li>
+      <li><code class="inl">sfms_dbnet</code> — Mongo + every <code class="inl">api</code>. Each api asks for <code class="inl">sfms-mongo</code>, which is unique.</li>
+      <li>api ↔ web talk over the school's <b>own private</b> network, where <code class="inl">api</code> can only mean that school's api.</li>
+    </ul>
+    <div class="note">The rule that keeps it true: no <code class="inl">web</code> is ever on <code class="inl">dbnet</code>, and no <code class="inl">api</code> is ever on <code class="inl">edge</code>.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">I. Backups on this track</h3>
+    <div class="warn">One shared Mongo means <b>one thing to back up and one thing to lose</b>. Restoring a single school means restoring one database out of the archive, not the whole volume — so dump <b>per school</b>, never just the volume, or a single school's restore will overwrite all of them.</div>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>docker exec school1-api sh -c 'mongodump --uri="$MONGO_URI" --gzip --archive' \
+  > school1-$(date +%F).archive.gz</pre></div>
+    <p>An archive carries the database name it came from, so restoring into a differently-named database needs <code class="inl">--nsFrom</code> / <code class="inl">--nsTo</code> (Step 16). Then off-box, one folder per school, as in Step 16.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">J. How much fits in 1 GB</h3>
+    <p>Measured with three schools live: about <b>520 MB</b> used, <b>~380 MB</b> free, swap barely touched. Roughly Mongo 250 MB (cache capped at <code class="inl">0.25</code>), each api ~70 MB (heap capped at <code class="inl">192</code>), each Nginx ~10 MB, Caddy ~20 MB.</p>
+    <ul>
+      <li><b>3 schools</b> on 1 GB: comfortable for a few hundred students each.</li>
+      <li><b>4–5</b>: possible, but raise the swap and watch <code class="inl">docker stats</code>.</li>
+      <li><b>More than that</b>, or bigger schools: move to 2–4 GB and go back to Steps 1–19, one Mongo per school.</li>
+    </ul>
+    <div class="note">The caps matter in both directions. Node sizes its heap from total system RAM, so without <code class="inl">API_HEAP_MB</code> three APIs each assume they may use half the box; and the frontend build needs <code class="inl">BUILD_HEAP</code> raised to 1 GB or <code class="inl">tsc</code> gets OOM-killed part-way through.</div>
+  </div>
+
+  <div class="footer">School Fee &amp; ERP Management System — Docker deployment. Replace YOUR_STATIC_IP, your-key.pem, the domains, and all secrets with your own.</div>
+</div>
+
+<script>
+  function copyCmd(btn){
+    var code = btn.parentElement.querySelector('pre');
+    var text = (code.innerText || code.textContent).trim();
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent = 'Copied!';
+      btn.classList.add('done');
+      setTimeout(function(){ btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1500);
+    }).catch(function(){
+      // Fallback for older browsers
+      var r = document.createRange(); r.selectNodeContents(code);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      try { document.execCommand('copy'); btn.textContent='Copied!'; setTimeout(function(){btn.textContent='Copy';},1500);} catch(e){}
+      s.removeAllRanges();
+    });
+  }
+</script>
+</body>
+</html>

@@ -308,15 +308,24 @@ Two things that trip people up:
 
 ## 10. Deployment
 
-Three production boxes, all Ubuntu, all fronted by host nginx + certbot:
+Four production boxes, all Ubuntu:
 
 1. **Oracle Cloud** — non-Docker: git clone, `pm2` process `sfms-api`, nginx webroot, MongoDB Atlas.
+   Host nginx + certbot.
 2. **AWS (original)** — non-Docker: `pm2`, nginx webroot, **self-hosted mongod with the school's real
-   live data**. Treat this box's database as sacred.
-3. **AWS (Docker)** — `docker compose` per the Docker guide, mongo in a container.
+   live data**. Treat this box's database as sacred. Host nginx + certbot.
+3. **AWS (Docker)** — `docker compose` per the Docker guide, one mongo container per school. Host
+   nginx + certbot.
+4. **AWS (3 schools, 1 GB)** — `3.90.108.126`, key `schoolnew.pem`, serving
+   `school1|school2|school3.smalltowncoder.in`. A **different** track: see `deploy/multi-school/` and
+   Step 20 of the Docker guide. One shared mongod holding one database per school, and **Caddy**
+   instead of host nginx + certbot, because three mongods do not fit in 1 GB. Schools 2 and 3 are
+   placeholders — their `VITE_SCHOOL_*` values still say "Demo".
 
-A fourth box (a paid Ubuntu VPS) is planned to host both schools, chosen over relying on a free tier
-for something being sold.
+A paid Ubuntu VPS was also considered, to avoid relying on a free tier for something being sold.
+
+Which track a box is on decides every command you run on it. Check for
+`deploy/multi-school/infra.env` before assuming the root `docker-compose.yml` applies.
 
 **Non-Docker update:** `git pull --ff-only`; backend `npm run build` + `pm2 restart sfms-api`;
 frontend — **build locally on the PC** (1 GB boxes OOM on `vite build`), tar `frontend/dist`, scp,
@@ -338,6 +347,14 @@ stored phone numbers are normalised. No manual migration step.
 One server runs several schools. Each is a **complete isolated stack** — its own mongo container,
 volume, api and web container — namespaced by the compose project name (`-p sfms_school2`). Nothing
 is shared but host nginx, the Docker engine, and the rclone config.
+
+On a **small box** (`deploy/multi-school/`, box 4 above) the schools share one mongod and hold one
+database each, so `DB_NAME` is what separates them and `MONGO_USER`/`MONGO_PASS` must match across the
+env files. There is no `WEB_PORT`: nothing is published to the host and Caddy reaches each school by
+container name. The networking there is load-bearing — every school's compose file names its services
+`api` and `web`, so all of them on one Docker network would let one school's nginx resolve `api` to
+another school's backend. Read the comment in `docker-compose.infra.yml` before changing a `networks:`
+block.
 
 **Must differ per school:** `WEB_PORT` (a clash means the second school will not start),
 `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` and `SCHOOL_UPI_VPA` (money must reach the right school),
