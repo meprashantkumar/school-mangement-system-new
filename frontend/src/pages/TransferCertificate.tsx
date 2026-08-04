@@ -103,13 +103,19 @@ export default function TransferCertificate() {
   const firstEnrolment = student.enrollmentHistory?.[0];
 
   const row = (label: string, value: React.ReactNode) => (
-    <div className="flex gap-3 border-b border-dotted border-foreground/20 py-2">
+    <div className="flex gap-3 border-b border-dotted border-foreground/20 py-2 print:py-[3px]">
       <span className="w-[46%] shrink-0 text-muted-foreground">{label}</span>
       <span className="font-medium">{value ?? "—"}</span>
     </div>
   );
 
   return (
+    <>
+      {/* A transfer certificate must come out on one sheet — a two-page TC gets
+          questioned by the school receiving it. The global 14mm print margin plus
+          this document's own frame is what tipped it over, so this page asks for a
+          tighter one. */}
+      <style>{"@media print{@page{margin:8mm}}"}</style>
     <div className="min-h-screen bg-muted/30 py-8 print:bg-white print:py-0">
       <div className="mx-auto max-w-3xl px-4">
         {/* Controls — hidden when printing */}
@@ -164,7 +170,7 @@ export default function TransferCertificate() {
         </div>
 
         {/* Certificate */}
-        <div className="relative overflow-hidden rounded-lg bg-white p-10 shadow-sm print:rounded-none print:shadow-none">
+        <div className="relative overflow-hidden rounded-lg bg-white p-10 shadow-sm print:rounded-none print:p-5 print:shadow-none">
           {/* Decorative double frame */}
           <div className="pointer-events-none absolute inset-3 rounded border-2 border-primary/40" />
           <div className="pointer-events-none absolute inset-[14px] rounded border border-primary/20" />
@@ -187,14 +193,14 @@ export default function TransferCertificate() {
               )}
             </div>
 
-            <div className="mt-6 text-center">
+            <div className="mt-5 text-center print:mt-3">
               <span className="inline-block rounded border-2 border-primary px-6 py-1 text-base font-bold uppercase tracking-[0.2em] text-primary">
                 Transfer Certificate
               </span>
             </div>
 
             {/* Meta */}
-            <div className="mt-6 flex items-center justify-between text-sm">
+            <div className="mt-5 flex items-center justify-between text-sm print:mt-3 print:text-[12.5px]">
               <span>
                 Certificate No: <span className="font-semibold">{certNo}</span>
               </span>
@@ -204,7 +210,7 @@ export default function TransferCertificate() {
             </div>
 
             {/* The particulars — a TC is read as a table by the admitting school */}
-            <div className="mt-6 text-[14px] leading-6">
+            <div className="mt-6 text-[14px] leading-6 print:mt-3 print:text-[12.5px] print:leading-[1.35]">
               {row("Name of the student", <span className="font-semibold">{student.name}</span>)}
               {row("Father's / Guardian's name", student.parentName)}
               {student.motherName && row("Mother's name", student.motherName)}
@@ -241,7 +247,7 @@ export default function TransferCertificate() {
             </div>
 
             {/* Body */}
-            <p className="mt-6 text-justify text-[15px] leading-8">
+            <p className="mt-6 text-justify text-[15px] leading-8 print:mt-3 print:text-[12.5px] print:leading-[1.5]">
               This is to certify that the particulars given above have been taken from the records
               of this school and are correct to the best of our knowledge. {heShe} left the school
               on <span className="font-semibold">{fmtDate(student.exitDate)}</span>, and no
@@ -253,14 +259,14 @@ export default function TransferCertificate() {
                 holds the post signs and stamps above the line, so a change of
                 principal never makes a printed certificate wrong, and the app does
                 not have to be touched. */}
-            <div className="mt-20 flex items-end justify-between">
+            <div className="mt-20 flex items-end justify-between print:mt-8">
               <div className="text-center text-sm text-muted-foreground">
-                <div className="h-16" />
+                <div className="h-16 print:h-9" />
                 <p>Seal</p>
               </div>
               <div className="text-center text-sm">
                 {/* Blank space to sign and stamp in. */}
-                <div className="h-16" />
+                <div className="h-16 print:h-9" />
                 <div className="border-t border-foreground/50 px-10 pt-1">
                   <p className="font-semibold text-foreground">
                     {SCHOOL.principal.role || "Principal"}
@@ -269,13 +275,14 @@ export default function TransferCertificate() {
               </div>
             </div>
 
-            <p className="mt-8 text-center text-[11px] text-muted-foreground">
+            <p className="mt-8 text-center text-[11px] text-muted-foreground print:hidden">
               Computer-generated certificate · {childOf} of {student.parentName || "—"} ·{" "}
               {certNo}
             </p>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
