@@ -114,7 +114,9 @@ export default function BonafideCertificate() {
                 <span className="font-semibold">{student.parentName || "—"}</span>, bearing Admission No.{" "}
                 <span className="font-semibold">{student.admissionNo}</span>, is a bonafide student of{" "}
                 <span className="font-semibold">{SCHOOL.fullName}</span>. {heShe} is studying in{" "}
-                <span className="font-semibold">Class {cls}</span> during the academic session{" "}
+                {/* classLabel already yields "Class 5" — prefixing again printed
+                    "Class Class 5-A" on every certificate the school handed out. */}
+                <span className="font-semibold">{cls}</span> during the academic session{" "}
                 <span className="font-semibold">{student.session || "—"}</span>.
               </p>
               <p>
