@@ -10,6 +10,7 @@ import { sendMail } from "../config/mailer";
 import { logAudit, AUDIT } from "../utils/audit";
 import { createPayment, planAllocations, applyAllocations } from "../utils/collection";
 import { syncInvoiceLateFee } from "../utils/lateFee";
+import { isMyChild } from "../utils/children";
 import { IUser } from "../models/User";
 
 // Emails the parent a payment confirmation / receipt (best-effort; never blocks the
@@ -49,10 +50,13 @@ function sendPaymentConfirmation(payment: any, invoice: IInvoice, student: any) 
 }
 
 // Parents/students may only touch invoices belonging to their own children.
+// Ownership is resolved through the shared children lookup (ID link, then mobile
+// number, then email) — parents log in by mobile and usually have no email, so
+// comparing email addresses here both locked them out of their own child and let
+// them reach any other student who also had no email on file.
 async function assertCanAccess(user: IUser, invoice: IInvoice) {
   if (user.role === "superadmin" || user.role === "admin") return;
-  const student = await Student.findById(invoice.student);
-  if (!student || student.parentEmail !== user.email) {
+  if (!(await isMyChild(user, invoice.student))) {
     throw new ApiError(403, "You cannot access this invoice");
   }
 }
