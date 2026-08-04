@@ -13,6 +13,32 @@ import { logAudit, AUDIT } from "../utils/audit";
 // race a backup).
 let running = false;
 
+// Every backup file is named after the school it came from (SCHOOL_NAME). When
+// several schools run on one box their archives otherwise look identical — same
+// name, same shape, and a dump restores into any database of the same name — so
+// a mix-up is silent and unrecoverable. Characters that are illegal in Windows /
+// Google Drive file names are stripped.
+function schoolLabel(): string {
+  const name = (env.schoolName || "")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return name || "School";
+}
+
+// Lower-case hyphenated form, for temp and download file names. Keeps letters in
+// any script (a school named in Hindi shouldn't fall back to a generic name), and
+// schoolLabel has already dropped the characters filesystems object to. \p{M} has
+// to be allowed alongside \p{L}: Devanagari vowel signs are combining marks, not
+// letters, so without it "विद्या" would be shredded into its bare consonants.
+function schoolSlug(): string {
+  const slug = schoolLabel()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "school";
+}
+
 // Runs `mongodump` into a single gzipped archive file. Resolves on success,
 // rejects with an ApiError on failure. We deliberately do NOT surface raw
 // mongodump stderr to the client — it can contain the connection string
@@ -72,7 +98,7 @@ export const runBackup = asyncHandler(async (req, res) => {
   running = true;
   const dir = env.backupDir || os.tmpdir();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const fileName = `sfms-backup-${stamp}.archive.gz`;
+  const fileName = `${schoolSlug()}-backup-${stamp}.archive.gz`;
   const filePath = path.join(dir, fileName);
 
   try {
@@ -150,7 +176,9 @@ function restoreFromStream(req: Request, mode: "merge" | "replace"): Promise<voi
   });
 }
 
-// A clean, human-readable Drive filename in IST, e.g. "RKPS 26 Jul 2026, 10-23 pm.archive.gz".
+// A clean, human-readable Drive filename in IST, e.g.
+// "R K Public School 26 Jul 2026, 10-23 pm.archive.gz". Leads with the school
+// name so two schools sharing one BACKUP_REMOTE can't overwrite each other.
 // (Colons are swapped for dashes so the file also downloads fine on Windows.)
 function driveFileName(): string {
   const pretty = new Date().toLocaleString("en-GB", {
@@ -162,7 +190,7 @@ function driveFileName(): string {
     minute: "2-digit",
     hour12: true,
   });
-  return `RKPS ${pretty.replace(/:/g, "-")}.archive.gz`;
+  return `${schoolLabel()} ${pretty.replace(/:/g, "-")}.archive.gz`;
 }
 
 // Uploads a local file to the rclone remote (Google Drive).
@@ -210,7 +238,7 @@ export const backupToDrive = asyncHandler(async (req, res) => {
   running = true;
   const dir = env.backupDir || os.tmpdir();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const localPath = path.join(dir, `rkps-manual-${stamp}.archive.gz`);
+  const localPath = path.join(dir, `${schoolSlug()}-manual-${stamp}.archive.gz`);
   const driveName = driveFileName();
   const dest = `${env.backupRemote.replace(/\/+$/, "")}/manual/${driveName}`;
 
@@ -244,7 +272,7 @@ export const restoreBackup = asyncHandler(async (req, res) => {
   running = true;
   const dir = env.backupDir || os.tmpdir();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const safetyPath = path.join(dir, `pre-restore-${stamp}.archive.gz`);
+  const safetyPath = path.join(dir, `${schoolSlug()}-pre-restore-${stamp}.archive.gz`);
 
   try {
     await fs.promises.mkdir(dir, { recursive: true });
