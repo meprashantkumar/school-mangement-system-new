@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, User, Users, Receipt, History, IndianRupee, ScrollText } from "lucide-react";
+import {
+  ArrowLeft,
+  User,
+  Users,
+  Receipt,
+  History,
+  IndianRupee,
+  ScrollText,
+  FileText,
+} from "lucide-react";
 import api from "@/lib/api";
 import type { Invoice, Payment, Student } from "@/types";
 import { formatINR } from "@/lib/utils";
@@ -79,13 +88,25 @@ export default function StudentDetails() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.open(`/certificate/bonafide/${id}`, "_blank")}
-          >
-            <ScrollText className="h-4 w-4" /> Bonafide Certificate
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`/certificate/bonafide/${id}`, "_blank")}
+            >
+              <ScrollText className="h-4 w-4" /> Bonafide Certificate
+            </Button>
+            {/* A TC only makes sense once the student has left, so it appears then. */}
+            {student.status === "left" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`/certificate/tc/${id}`, "_blank")}
+              >
+                <FileText className="h-4 w-4" /> Transfer Certificate
+              </Button>
+            )}
+          </div>
           <div className="flex gap-6">
             <div className="text-right">
               <p className="text-xs uppercase text-muted-foreground">Total due</p>

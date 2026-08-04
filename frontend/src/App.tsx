@@ -7,6 +7,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Receipt from "./pages/Receipt";
 import BonafideCertificate from "./pages/BonafideCertificate";
+import TransferCertificate from "./pages/TransferCertificate";
 import Dashboard from "./pages/admin/Dashboard";
 import Students from "./pages/admin/Students";
 import StudentDetails from "./pages/admin/StudentDetails";
@@ -61,6 +62,16 @@ export default function App() {
         element={
           <ProtectedRoute roles={["superadmin", "admin"]}>
             <BonafideCertificate />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Printable transfer certificate for a student who has left (staff only) */}
+      <Route
+        path="/certificate/tc/:id"
+        element={
+          <ProtectedRoute roles={["superadmin", "admin"]}>
+            <TransferCertificate />
           </ProtectedRoute>
         }
       />

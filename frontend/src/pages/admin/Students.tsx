@@ -9,6 +9,7 @@ import {
   ArrowUpCircle,
   UserMinus,
   RotateCcw,
+  FileText,
   Eye,
   Download,
   Upload,
@@ -664,14 +665,24 @@ export default function Students() {
                       <KeyRound className="h-4 w-4" />
                     </Button>
                     {s.status === "left" ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => rejoin(s)}
-                        title="Reactivate (undo left)"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => window.open(`/certificate/tc/${s._id}`, "_blank")}
+                          title="Print transfer certificate"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => rejoin(s)}
+                          title="Reactivate (undo left)"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                      </>
                     ) : (
                       <Button
                         variant="ghost"
