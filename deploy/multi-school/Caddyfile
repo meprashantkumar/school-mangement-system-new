@@ -1,0 +1,38 @@
+# =============================================================================
+# One site block per school. Caddy obtains and renews the HTTPS certificate for
+# each domain by itself on first request — no certbot, no renewal cron, no
+# reload. It also redirects http -> https automatically.
+#
+# Before adding a domain here, point its DNS A record at this server. Caddy
+# proves ownership over port 80, so a domain that does not resolve yet will fail
+# to get a certificate and log a retry loop.
+#
+# After editing:  docker exec sfms-caddy caddy reload --config /etc/caddy/Caddyfile
+# (a reload is graceful; no dropped connections and no re-issuing of certs)
+# =============================================================================
+
+{
+	# Let's Encrypt account — set ACME_EMAIL in infra.env. Expiry warnings go here.
+	email {$ACME_EMAIL}
+}
+
+# Shared settings. The argument is the school's web container name.
+(school) {
+	# The containers serve plain files; compressing at the edge is the single
+	# biggest win for parents on a slow phone connection.
+	encode zstd gzip
+
+	reverse_proxy {args[0]}:80
+}
+
+school1.smalltowncoder.in {
+	import school school1-web
+}
+
+school2.smalltowncoder.in {
+	import school school2-web
+}
+
+school3.smalltowncoder.in {
+	import school school3-web
+}

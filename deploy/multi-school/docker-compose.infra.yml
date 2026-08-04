@@ -1,0 +1,92 @@
+# =============================================================================
+# Shared infrastructure for several schools on ONE small box.
+#
+#   docker compose --env-file infra.env -f docker-compose.infra.yml -p sfms_infra up -d
+#
+# Two services every school uses:
+#   caddy  - the only thing on ports 80/443. Routes each domain to that
+#            school's web container and gets/renews its HTTPS certificate
+#            automatically (no certbot, no cron).
+#   mongo  - ONE database server holding one database per school.
+#
+# Why one Mongo and not one per school (as the root docker-compose.yml does)?
+# RAM. A mongod wants ~250 MB for its cache alone, so three of them plus three
+# Node APIs does not fit in 1 GB. One mongod with three databases costs a third
+# of that. Schools stay isolated: separate databases, separate JWT secrets,
+# separate containers. On a box with 8 GB+, prefer the root compose file — a
+# database server per school is the stronger boundary.
+#
+# The trade-off to know: this mongod is a single point of failure and a single
+# thing to back up. Restoring one school means restoring one database out of it
+# (mongorestore --nsFrom/--nsTo), not the whole volume.
+# =============================================================================
+
+name: sfms_infra
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: sfms-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys live here. Keep this volume: losing
+      # it means re-issuing every certificate, and Let's Encrypt rate-limits
+      # that (5 per domain per week).
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # Used for the Let's Encrypt account (expiry warnings go here).
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in infra.env}
+    networks:
+      - edge
+
+  mongo:
+    image: mongo:7.0
+    container_name: sfms-mongo
+    restart: unless-stopped
+    # Cap the WiredTiger cache. Mongo's default is (RAM - 1 GB) or 256 MB,
+    # whichever is larger, and on a 1 GB box that default is a guess that leaves
+    # nothing for the APIs. 0.25 is ample for a few hundred students per school.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "${MONGO_CACHE_GB:-0.25}"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?set MONGO_USER in infra.env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:?set MONGO_PASS in infra.env}
+    volumes:
+      - mongo_data:/data/db # <-- every school's data. THIS is what you back up.
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    # Deliberately no host port: only the api containers reach it, over dbnet.
+    networks:
+      - dbnet
+
+volumes:
+  mongo_data:
+  caddy_data:
+  caddy_config:
+
+# Two networks, and which container joins which one matters for isolation.
+#
+# Every school's compose file has services literally named "api" and "web", so
+# on a shared network those names would be ambiguous and one school's Nginx
+# could resolve "api" to another school's backend — a data leak. Keeping them on
+# separate networks makes that impossible:
+#
+#   edge   caddy + every web        (caddy asks for "school1-web", unique)
+#   dbnet  mongo + every api        (api asks for "sfms-mongo",  unique)
+#
+# and api<->web talk over the school's own private default network, where "api"
+# means only that school's api. So no web is ever on dbnet, and no api is ever
+# on edge.
+networks:
+  edge:
+    name: sfms_edge
+  dbnet:
+    name: sfms_dbnet

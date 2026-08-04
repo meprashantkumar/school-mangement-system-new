@@ -1,0 +1,99 @@
+# =============================================================================
+# ONE school: api + web. Run it once per school, with its own env file and
+# project name:
+#
+#   docker compose --env-file school1.env -f docker-compose.school.yml \
+#     -p sfms_school1 up -d --build
+#
+# Needs docker-compose.infra.yml up first — it provides Caddy, Mongo, and the
+# two shared networks this file joins.
+#
+# Neither service publishes a host port. Caddy is the only way in, which means
+# nothing here is reachable over plain HTTP from the internet.
+# =============================================================================
+
+services:
+  api:
+    build: ../../server
+    container_name: ${SCHOOL_KEY:?set SCHOOL_KEY (e.g. school1) in the env file}-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      # Node sizes its heap from total system RAM, which on a shared 1 GB box
+      # means three APIs each thinking they may use half of it. Cap it.
+      NODE_OPTIONS: --max-old-space-size=${API_HEAP_MB:-192}
+      # Shared mongod, own database. DB_NAME MUST differ per school: point two
+      # schools at the same name and they silently share one set of students.
+      MONGO_URI: mongodb://${MONGO_USER:?}:${MONGO_PASS:?}@sfms-mongo:27017/${DB_NAME:?set a UNIQUE DB_NAME per school}?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:?generate one per school: openssl rand -hex 32}
+      JWT_EXPIRE: ${JWT_EXPIRE:-7d}
+      CLIENT_URL: ${CLIENT_URL:?set the school's https:// URL}
+      SCHOOL_NAME: ${SCHOOL_NAME}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME:-Super Admin}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      ONLINE_PLATFORM_FEE_PCT: ${ONLINE_PLATFORM_FEE_PCT:-2.5}
+      LATE_FEE_PER_DAY: ${LATE_FEE_PER_DAY:-0}
+      LATE_FEE_MAX: ${LATE_FEE_MAX:-0}
+      SCHOOL_UPI_VPA: ${SCHOOL_UPI_VPA:-}
+      SCHOOL_UPI_NAME: ${SCHOOL_UPI_NAME:-School Fee Office}
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-gdrive:sfms-backups}
+      RCLONE_CONFIG: /root/.config/rclone/rclone.conf
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    volumes:
+      # Per-school rclone config for the in-app "Back up to Google Drive"
+      # button. Safe to leave empty — the rest of the app does not need it.
+      - ./rclone/${SCHOOL_KEY}:/root/.config/rclone
+    networks:
+      - default # web reaches this as "api"
+      - dbnet # reaches mongo as "sfms-mongo"
+
+  web:
+    build:
+      context: ../../frontend
+      args:
+        # Branding is compiled into the bundle, so changing any of these needs
+        # `up -d --build`, not just a restart.
+        VITE_SCHOOL_NAME: ${VITE_SCHOOL_NAME:-}
+        VITE_SCHOOL_PLACE: ${VITE_SCHOOL_PLACE:-}
+        VITE_SCHOOL_FULL_NAME: ${VITE_SCHOOL_FULL_NAME:-}
+        VITE_SCHOOL_SHORT_NAME: ${VITE_SCHOOL_SHORT_NAME:-}
+        VITE_SCHOOL_MONOGRAM: ${VITE_SCHOOL_MONOGRAM:-}
+        VITE_SCHOOL_TAGLINE: ${VITE_SCHOOL_TAGLINE:-}
+        VITE_SCHOOL_INTRO: ${VITE_SCHOOL_INTRO:-}
+        VITE_SCHOOL_DIRECTOR_NAME: ${VITE_SCHOOL_DIRECTOR_NAME:-}
+        VITE_SCHOOL_DIRECTOR_ROLE: ${VITE_SCHOOL_DIRECTOR_ROLE:-}
+        VITE_SCHOOL_PRINCIPAL_NAME: ${VITE_SCHOOL_PRINCIPAL_NAME:-}
+        VITE_SCHOOL_PRINCIPAL_ROLE: ${VITE_SCHOOL_PRINCIPAL_ROLE:-}
+        VITE_SCHOOL_ADDRESS: ${VITE_SCHOOL_ADDRESS:-}
+        VITE_SCHOOL_PHONE: ${VITE_SCHOOL_PHONE:-}
+        VITE_SCHOOL_EMAIL: ${VITE_SCHOOL_EMAIL:-}
+        VITE_SCHOOL_ESTABLISHED: ${VITE_SCHOOL_ESTABLISHED:-}
+        VITE_SCHOOL_AFFILIATION: ${VITE_SCHOOL_AFFILIATION:-}
+        # tsc + vite need more heap than Node allows itself on a 1 GB host.
+        NODE_OPTIONS: --max-old-space-size=${BUILD_HEAP:-1024}
+    container_name: ${SCHOOL_KEY}-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - default # resolves "api" to THIS school's api only
+      - edge # caddy reaches this as "${SCHOOL_KEY}-web"
+
+networks:
+  # Private to this school (one per compose project) — this is what keeps the
+  # service name "api" unambiguous. See the note in docker-compose.infra.yml.
+  default:
+  edge:
+    name: sfms_edge
+    external: true
+  dbnet:
+    name: sfms_dbnet
+    external: true

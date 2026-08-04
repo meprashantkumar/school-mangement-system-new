@@ -12,6 +12,14 @@
 # ---- Build stage ----------------------------------------------------------
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
+
+# Node picks its heap size from the host's total RAM, which on a 1 GB VPS is far
+# too little for `tsc` + `vite build` and the build gets OOM-killed. Overriding
+# it lets the build spill into swap instead: slower, but it finishes. Harmless
+# on a bigger machine, where the cap is never reached.
+ARG NODE_OPTIONS=--max-old-space-size=1024
+ENV NODE_OPTIONS=$NODE_OPTIONS
+
 COPY package*.json ./
 RUN npm ci
 COPY . .
