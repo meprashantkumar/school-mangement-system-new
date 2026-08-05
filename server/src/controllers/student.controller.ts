@@ -2,7 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { nextClass } from "../utils/academics";
 import { logAudit, AUDIT } from "../utils/audit";
-import { Student } from "../models/Student";
+import { Student, IStudent } from "../models/Student";
 import { User } from "../models/User";
 import { PromotionRun } from "../models/PromotionRun";
 import { moveToTrash } from "./trash.controller";
@@ -310,96 +310,201 @@ export const undoPromotion = asyncHandler(async (req, res) => {
   res.json({ message: `Promotion undone — ${reverted} student(s) restored`, reverted });
 });
 
-// POST /api/students/import  { students: [...] }
-// Bulk-inserts students (e.g. restoring a backup or loading old records). Existing
-// admission numbers are skipped, so it's safe to re-run. Returns a summary.
+// Runs jobs a few at a time. The import used to await a findOne and a create for
+// every single row, so a 341-student file meant 682 round trips one after another —
+// about a minute against a hosted database, and proportionally worse for a whole
+// school. The rows don't depend on each other, so a small pool turns that minute
+// into seconds while leaving the connection pool room to breathe.
+const inPool = async <T>(items: T[], size: number, job: (item: T, index: number) => Promise<void>) => {
+  let next = 0;
+  const worker = async () => {
+    for (let i = next++; i < items.length; i = next++) await job(items[i], i);
+  };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
+};
+
+// Turns one imported row into the fields to store. `create` is the whole student;
+// `update` holds only what the file actually supplied, so refreshing an existing
+// record fills in and corrects things without blanking out anything the file is
+// silent about (a CSV without a mother's-name column must not erase it).
+const shapeImportRow = (row: any) => {
+  const genders = ["Male", "Female", "Other"];
+  const statuses = ["active", "left", "inactive"];
+  const given = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== "";
+
+  const create: Record<string, unknown> = {};
+  const update: Record<string, unknown> = {};
+  const both = (key: string, value: unknown) => {
+    create[key] = value;
+    update[key] = value;
+  };
+
+  both("admissionNo", String(row.admissionNo).trim());
+  both("name", String(row.name).trim());
+  both("class", String(row.class).trim());
+
+  for (const key of [
+    "section", "rollNo", "session", "category", "parentName", "motherName",
+    "parentPhone", "parentEmail", "address",
+  ]) {
+    if (given(row[key])) both(key, String(row[key]).trim());
+    else create[key] = undefined;
+  }
+
+  create.gender = "";
+  if (genders.includes(row.gender)) both("gender", row.gender);
+
+  create.status = "active";
+  if (statuses.includes(row.status)) both("status", row.status);
+
+  for (const key of ["dateOfAdmission", "dateOfBirth"] as const) {
+    create[key] = undefined;
+    if (!given(row[key])) continue;
+    const d = new Date(row[key]);
+    if (!Number.isNaN(d.getTime())) both(key, d);
+  }
+
+  // optedServices may arrive as an array (JSON) or a ";"/","-joined string (CSV).
+  const hasOpted = Array.isArray(row.optedServices) || given(row.optedServices);
+  const opted: string[] = Array.isArray(row.optedServices)
+    ? row.optedServices.map((s: unknown) => String(s).trim()).filter(Boolean)
+    : typeof row.optedServices === "string" && row.optedServices.trim()
+    ? row.optedServices.split(/[;,]/).map((s: string) => s.trim()).filter(Boolean)
+    : [];
+  create.optedServices = opted;
+  if (hasOpted) update.optedServices = opted;
+
+  // Per-student amount overrides for opted services (e.g. a longer bus route).
+  // Only kept for services the student actually opted into; the model's pre-save
+  // hook prunes any stragglers too.
+  // A JSON file carries them as objects; a CSV column carries them as text, like
+  // "Transport:900;Meal:300".
+  const rawFees: { name: string; amount: unknown }[] = Array.isArray(row.serviceFees)
+    ? row.serviceFees.map((f: any) => ({ name: String(f?.name || "").trim(), amount: f?.amount }))
+    : typeof row.serviceFees === "string" && row.serviceFees.trim()
+    ? row.serviceFees
+        .split(/[;,]/)
+        .map((part: string) => {
+          const at = part.lastIndexOf(":");
+          return at < 0
+            ? { name: part.trim(), amount: NaN }
+            : { name: part.slice(0, at).trim(), amount: part.slice(at + 1).trim() };
+        })
+    : [];
+  const serviceFees = rawFees
+    .map((f) => ({ name: f.name, amount: Number(f.amount) }))
+    .filter((f) => f.name && Number.isFinite(f.amount) && f.amount >= 0 && opted.includes(f.name));
+  create.serviceFees = serviceFees;
+  if (rawFees.length) update.serviceFees = serviceFees;
+
+  return { create, update };
+};
+
+// POST /api/students/import-preview  { admissionNos: [...] }
+// How many of these are already on file? The import screen asks this before sending
+// the file, so it can offer to refresh existing records instead of silently skipping
+// them.
+export const previewImport = asyncHandler(async (req, res) => {
+  const list = req.body.admissionNos;
+  if (!Array.isArray(list)) throw new ApiError(400, "Expected { admissionNos: [...] }");
+  const admissionNos = [...new Set(list.map((a: unknown) => String(a).trim()).filter(Boolean))];
+  const existing = admissionNos.length
+    ? await Student.countDocuments({ admissionNo: { $in: admissionNos } })
+    : 0;
+  res.json({ total: admissionNos.length, existing });
+});
+
+// POST /api/students/import  { students: [...], updateExisting?: boolean }
+// Bulk-loads students (e.g. restoring a backup or loading old records). An admission
+// number already on file is skipped, so the import is safe to re-run — unless
+// `updateExisting` is set, in which case those records are refreshed from the file.
+// That matters after a lossy first import: a CSV carries no fee amounts, so the
+// students land without them, and re-importing the JSON would otherwise skip every
+// one of them and leave the fees missing for good.
 export const importStudents = asyncHandler(async (req, res) => {
   const rows = req.body.students;
+  const updateExisting = req.body.updateExisting === true;
   if (!Array.isArray(rows)) {
     throw new ApiError(400, "Expected a JSON body of the form { students: [...] }");
   }
 
-  const genders = ["Male", "Female", "Other"];
-  const statuses = ["active", "left", "inactive"];
-
   let inserted = 0;
+  let updated = 0;
   let skipped = 0;
-  const errors: string[] = [];
+  const failures: { row: number; message: string }[] = [];
+  const fail = (i: number, admissionNo: string, message: string) =>
+    failures.push({ row: i + 1, message: `Row ${i + 1}${admissionNo ? ` (${admissionNo})` : ""}: ${message}` });
 
+  // ---- 1. check every row up front, without touching the database -----------
+  const usable: { index: number; admissionNo: string; shaped: ReturnType<typeof shapeImportRow> }[] = [];
+  const seen = new Set<string>();
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i] || {};
     const admissionNo = row.admissionNo != null ? String(row.admissionNo).trim() : "";
-
-    try {
-      if (!admissionNo || !row.name || row.class == null || String(row.class).trim() === "") {
-        errors.push(`Row ${i + 1}: admissionNo, name and class are required`);
-        continue;
-      }
-
-      const exists = await Student.findOne({ admissionNo });
-      if (exists) {
-        skipped += 1;
-        continue;
-      }
-
-      // optedServices may arrive as an array (JSON) or a ";"/","-joined string (CSV).
-      const opted = Array.isArray(row.optedServices)
-        ? row.optedServices
-        : typeof row.optedServices === "string" && row.optedServices.trim()
-        ? row.optedServices.split(/[;,]/).map((s: string) => s.trim()).filter(Boolean)
-        : [];
-
-      // Optional per-student fee overrides for opted services (e.g. a longer bus
-      // route). Only kept for services the student actually opted into; the
-      // model's pre-save hook prunes any stragglers too.
-      const serviceFees = Array.isArray(row.serviceFees)
-        ? row.serviceFees
-            .map((f: any) => ({ name: String(f?.name || "").trim(), amount: Number(f?.amount) }))
-            .filter(
-              (f: any) =>
-                f.name && Number.isFinite(f.amount) && f.amount >= 0 && opted.includes(f.name)
-            )
-        : [];
-
-      let doa: Date | undefined = row.dateOfAdmission ? new Date(row.dateOfAdmission) : undefined;
-      if (doa && Number.isNaN(doa.getTime())) doa = undefined;
-
-      let dob: Date | undefined = row.dateOfBirth ? new Date(row.dateOfBirth) : undefined;
-      if (dob && Number.isNaN(dob.getTime())) dob = undefined;
-
-      await Student.create({
-        admissionNo,
-        name: String(row.name).trim(),
-        dateOfAdmission: doa,
-        dateOfBirth: dob,
-        session: row.session || undefined,
-        class: String(row.class).trim(),
-        section: row.section || undefined,
-        rollNo: row.rollNo != null ? String(row.rollNo) : undefined,
-        gender: genders.includes(row.gender) ? row.gender : "",
-        category: row.category || "General",
-        parentName: row.parentName || undefined,
-        motherName: row.motherName || undefined,
-        parentPhone: row.parentPhone != null ? String(row.parentPhone) : undefined,
-        parentEmail: row.parentEmail || undefined,
-        address: row.address || undefined,
-        optedServices: opted,
-        serviceFees,
-        status: statuses.includes(row.status) ? row.status : "active",
-      });
-      inserted += 1;
-    } catch (err: any) {
-      errors.push(`Row ${i + 1} (${admissionNo || "?"}): ${err.message}`);
+    if (!admissionNo || !row.name || row.class == null || String(row.class).trim() === "") {
+      fail(i, admissionNo, "admissionNo, name and class are required");
+      continue;
     }
+    // Two rows for the same admission number would otherwise race each other.
+    if (seen.has(admissionNo)) {
+      fail(i, admissionNo, "this admission number appears more than once in the file");
+      continue;
+    }
+    seen.add(admissionNo);
+    usable.push({ index: i, admissionNo, shaped: shapeImportRow(row) });
   }
 
-  if (inserted) logAudit(req, AUDIT.STUDENT, `Imported ${inserted} student(s)`);
+  // ---- 2. one query to find out which of them are already on file -----------
+  const existing = new Map<string, IStudent>();
+  if (usable.length) {
+    const docs = await Student.find({ admissionNo: { $in: usable.map((u) => u.admissionNo) } });
+    for (const doc of docs) existing.set(doc.admissionNo, doc);
+  }
+
+  // ---- 3. write, a pool at a time -------------------------------------------
+  await inPool(usable, 20, async ({ index, admissionNo, shaped }) => {
+    try {
+      const doc = existing.get(admissionNo);
+      if (doc) {
+        if (!updateExisting) {
+          skipped += 1;
+          return;
+        }
+        // Saving through the document keeps the model's own tidying up in play:
+        // pruning fees for services no longer used, and storing the parent's
+        // mobile in the one canonical form that logging in relies on.
+        doc.set(shaped.update);
+        await doc.save();
+        updated += 1;
+        return;
+      }
+      await Student.create(shaped.create);
+      inserted += 1;
+    } catch (err: any) {
+      fail(index, admissionNo, err.message);
+    }
+  });
+
+  failures.sort((a, b) => a.row - b.row);
+  const errors = failures.map((f) => f.message);
+
+  if (inserted || updated) {
+    logAudit(
+      req,
+      AUDIT.STUDENT,
+      `Imported ${inserted} student(s)${updated ? `, updated ${updated} existing` : ""}`
+    );
+  }
+
+  const parts = [`Imported ${inserted}`];
+  if (updateExisting) parts.push(`updated ${updated} existing`);
+  else parts.push(`skipped ${skipped} existing`);
+  if (errors.length) parts.push(`${errors.length} error(s)`);
 
   res.json({
-    message: `Imported ${inserted}, skipped ${skipped} existing${
-      errors.length ? `, ${errors.length} error(s)` : ""
-    }.`,
+    message: `${parts.join(", ")}.`,
     inserted,
+    updated,
     skipped,
     errors,
   });

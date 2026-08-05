@@ -10,6 +10,7 @@ import {
   getStudents,
   importStudents,
   markStudentLeft,
+  previewImport,
   promoteStudents,
   rejoinStudent,
   undoPromotion,
@@ -28,6 +29,7 @@ router.get("/:id", protect, authorize("superadmin", "admin"), getStudent);
 // Managing students: super admin only
 router.post("/", protect, authorize("superadmin"), createStudent);
 router.post("/import", protect, authorize("superadmin"), importStudents);
+router.post("/import-preview", protect, authorize("superadmin"), previewImport);
 router.post("/bulk-services", protect, authorize("superadmin"), bulkUpdateServices);
 router.post("/promote", protect, authorize("superadmin"), promoteStudents);
 router.post("/promote/undo/:runId", protect, authorize("superadmin"), undoPromotion);

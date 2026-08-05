@@ -87,6 +87,10 @@ const CSV_COLUMNS = [
   "parentEmail",
   "address",
   "optedServices",
+  // The per-student amounts, as "Transport:900;Meal:300". Without this column a CSV
+  // export loses every custom bus fare, and re-importing the file recreates the
+  // students with the service ticked but no amount against it.
+  "serviceFees",
   "status",
 ];
 
@@ -121,6 +125,10 @@ export default function Students() {
   const [leaveForm, setLeaveForm] = useState({ date: today(), reason: "" });
   const [importing, setImporting] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  // A picked file whose students are already on file — waiting on skip-or-refresh.
+  const [pendingImport, setPendingImport] = useState<
+    { rows: any[]; already: number; name: string } | null
+  >(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkService, setBulkService] = useState("Transport");
@@ -374,6 +382,7 @@ export default function Students() {
           dateOfAdmission: s.dateOfAdmission ? s.dateOfAdmission.slice(0, 10) : "",
           dateOfBirth: s.dateOfBirth ? s.dateOfBirth.slice(0, 10) : "",
           optedServices: (s.optedServices || []).join(";"),
+          serviceFees: (s.serviceFees || []).map((f) => `${f.name}:${f.amount}`).join(";"),
         }));
         downloadFile(`students-${stamp}.csv`, toCSV(rows as any, CSV_COLUMNS), "text/csv;charset=utf-8");
       }
@@ -383,27 +392,12 @@ export default function Students() {
     }
   };
 
-  // Import from a .csv or .json file (skips admission numbers that already exist).
-  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // let the same file be picked again later
-    if (!file) return;
+  // Send a prepared set of rows to the server and report what happened.
+  const runImport = async (rows: any[], updateExisting: boolean) => {
     setImporting(true);
     setImportErrors([]);
     try {
-      const text = await file.text();
-      let rows: any[];
-      if (file.name.toLowerCase().endsWith(".json")) {
-        const parsed = JSON.parse(text);
-        rows = Array.isArray(parsed) ? parsed : parsed.students;
-      } else {
-        rows = parseCSV(text);
-      }
-      if (!Array.isArray(rows) || rows.length === 0) {
-        toast.error("No rows found in that file");
-        return;
-      }
-      const { data } = await api.post("/students/import", { students: rows });
+      const { data } = await api.post("/students/import", { students: rows, updateExisting });
       toast.success(data.message);
       setImportErrors(data.errors || []);
       await fetchStudents();
@@ -413,6 +407,53 @@ export default function Students() {
     } finally {
       setImporting(false);
     }
+  };
+
+  // Import from a .csv or .json file. Admission numbers already on file are skipped
+  // unless the office chooses to refresh them from the file — which is how a first
+  // import that came in without fee amounts gets put right.
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be picked again later
+    if (!file) return;
+    let rows: any[];
+    try {
+      const text = await file.text();
+      if (file.name.toLowerCase().endsWith(".json")) {
+        const parsed = JSON.parse(text);
+        rows = Array.isArray(parsed) ? parsed : parsed.students;
+      } else {
+        rows = parseCSV(text);
+      }
+    } catch {
+      toast.error("Could not read that file — check the format");
+      return;
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      toast.error("No rows found in that file");
+      return;
+    }
+
+    // Ask first if the file is mostly students we already have, rather than
+    // reporting "skipped 341" and leaving the office to wonder why nothing changed.
+    setImporting(true);
+    let already = 0;
+    try {
+      const { data } = await api.post("/students/import-preview", {
+        admissionNos: rows.map((r) => r?.admissionNo).filter((a) => a != null),
+      });
+      already = data.existing || 0;
+    } catch {
+      /* not fatal — fall through and import as an add-only run */
+    } finally {
+      setImporting(false);
+    }
+
+    if (already > 0) {
+      setPendingImport({ rows, already, name: file.name });
+      return;
+    }
+    await runImport(rows, false);
   };
 
   return (
@@ -987,6 +1028,51 @@ export default function Students() {
               <Button type="submit">Mark as left</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingImport} onOpenChange={(o) => !o && setPendingImport(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Some of these students are already here</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              <span className="font-medium">{pendingImport?.already}</span> of the{" "}
+              {pendingImport?.rows.length} students in {pendingImport?.name} are already on
+              file.
+            </p>
+            <p className="text-muted-foreground">
+              Adding only the new ones leaves those records exactly as they are. Refreshing
+              them updates each one from the file — including transport and other service
+              amounts, which is what you want if they were first loaded without them.
+              Anything the file doesn't mention is left alone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingImport(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const p = pendingImport!;
+                setPendingImport(null);
+                runImport(p.rows, false);
+              }}
+            >
+              Add new only
+            </Button>
+            <Button
+              onClick={() => {
+                const p = pendingImport!;
+                setPendingImport(null);
+                runImport(p.rows, true);
+              }}
+            >
+              Refresh {pendingImport?.already} from the file
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
