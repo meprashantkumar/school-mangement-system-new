@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
-import { BellRing, IndianRupee, Search, ChevronLeft, ChevronRight, Ban } from "lucide-react";
+import {
+  BellRing,
+  IndianRupee,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Ban,
+  ShoppingBag,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import type { Invoice, Payment } from "@/types";
+import type { ChargeReportRow, Invoice, Payment } from "@/types";
 import { formatINR } from "@/lib/utils";
 import { CLASSES, classLabel } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -55,6 +63,22 @@ export default function Reports() {
     setCol(data);
   };
 
+  // Extras sold at the office (tie, sweater, book set)
+  const [chFilters, setChFilters] = useState({ from: "", to: "" });
+  const [chReload, setChReload] = useState(0);
+  const [charges, setCharges] = useState<{
+    rows: ChargeReportRow[];
+    totals: ChargeReportRow;
+  } | null>(null);
+
+  const loadCharges = async () => {
+    const params: Record<string, string> = {};
+    if (chFilters.from) params.from = chFilters.from;
+    if (chFilters.to) params.to = chFilters.to;
+    const { data } = await api.get("/charges/report", { params });
+    setCharges({ rows: data.rows || [], totals: data.totals });
+  };
+
   const loadDefaulters = async () => {
     const params: Record<string, string> = {};
     if (defFilters.search) params.search = defFilters.search;
@@ -67,6 +91,11 @@ export default function Reports() {
     loadCollection().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colPage, colReload]);
+
+  useEffect(() => {
+    loadCharges().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chReload]);
 
   // Defaulters filter as you type (debounced).
   useEffect(() => {
@@ -275,6 +304,104 @@ export default function Reports() {
                 </Button>
               </div>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Extras sold at the office */}
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ShoppingBag className="h-5 w-5 text-primary" /> Items sold at the office
+          </CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              type="date"
+              className="w-auto"
+              value={chFilters.from}
+              onChange={(e) => setChFilters((f) => ({ ...f, from: e.target.value }))}
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <Input
+              type="date"
+              className="w-auto"
+              value={chFilters.to}
+              onChange={(e) => setChFilters((f) => ({ ...f, to: e.target.value }))}
+            />
+            <Button size="sm" variant="outline" onClick={() => setChReload((n) => n + 1)}>
+              Apply
+            </Button>
+            {(chFilters.from || chFilters.to) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setChFilters({ from: "", to: "" });
+                  setChReload((n) => n + 1);
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!charges || charges.rows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Nothing sold in this period. Charges added on{" "}
+              <span className="font-medium">Collect Fee</span> appear here.
+            </p>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Billed</TableHead>
+                    <TableHead className="text-right">Collected</TableHead>
+                    <TableHead className="text-right">Outstanding</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {charges.rows.map((r) => (
+                    <TableRow key={r.name}>
+                      <TableCell className="font-medium">{r.name}</TableCell>
+                      <TableCell className="text-right">{r.qty}</TableCell>
+                      <TableCell className="text-right">{formatINR(r.billed)}</TableCell>
+                      <TableCell className="text-right text-emerald-600">
+                        {formatINR(r.collected)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {r.outstanding > 0 ? (
+                          <span className="text-rose-600">{formatINR(r.outstanding)}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="font-semibold">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right">{charges.totals.qty}</TableCell>
+                    <TableCell className="text-right">{formatINR(charges.totals.billed)}</TableCell>
+                    <TableCell className="text-right text-emerald-600">
+                      {formatINR(charges.totals.collected)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatINR(charges.totals.outstanding)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              <p className="mt-3 text-xs text-muted-foreground">
+                When a family has paid only part of a bill, the money counts against the{" "}
+                <span className="font-medium">earliest</span> charges first — so something bought and
+                paid for last week stays paid even after another item is added to the same bill. A
+                waived charge clears from <span className="font-medium">Outstanding</span> without
+                counting as <span className="font-medium">Collected</span>.
+              </p>
+            </>
           )}
         </CardContent>
       </Card>

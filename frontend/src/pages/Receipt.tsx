@@ -11,13 +11,19 @@ import { SCHOOL } from "@/lib/school";
 export default function Receipt() {
   const { id } = useParams();
   const [payment, setPayment] = useState<any>(null);
+  // Hand-added charges across every bill this payment settled — the server gathers
+  // them, since a lump sum can cover the fee bill and an extras bill at once.
+  const [extras, setExtras] = useState<any[]>([]);
   const [schoolName, setSchoolName] = useState("School");
   const [error, setError] = useState(false);
 
   useEffect(() => {
     api
       .get(`/payments/${id}/receipt`)
-      .then(({ data }) => setPayment(data.payment))
+      .then(({ data }) => {
+        setPayment(data.payment);
+        setExtras(data.extras || []);
+      })
       .catch(() => setError(true));
     api
       .get("/config")
@@ -103,6 +109,25 @@ export default function Receipt() {
             <div className="mt-4 flex items-center justify-between rounded-lg bg-primary/5 px-4 py-3">
               <span className="text-sm font-medium">Amount paid</span>
               <span className="text-2xl font-bold text-primary">{formatINR(payment.amount)}</span>
+            </div>
+          )}
+
+          {/* What the extras were. Without this a parent who bought a tie sees only a
+              bigger total with nothing saying why — and the receipt is the copy they
+              keep. Fee lines aren't listed: those are the same every month and already
+              on the fee bill. */}
+          {extras.length > 0 && (
+            <div className="mt-3 space-y-1 rounded-lg border px-4 py-3 text-sm">
+              <p className="mb-1 font-medium">Includes</p>
+              {extras.map((it: any, i: number) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {it.name}
+                    {(it.qty || 1) > 1 && ` · ${it.qty} × ${formatINR(it.unitAmount || 0)}`}
+                  </span>
+                  <span>{formatINR(it.amount)}</span>
+                </div>
+              ))}
             </div>
           )}
 

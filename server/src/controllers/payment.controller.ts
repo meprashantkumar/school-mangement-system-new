@@ -491,5 +491,32 @@ export const getReceipt = asyncHandler(async (req, res) => {
   // Parents/students may only view receipts for their own children.
   await assertCanAccess(req.user!, payment.invoice as unknown as IInvoice);
 
-  res.json({ payment });
+  // Hand-added charges (a tie, a book) across EVERY bill this payment settled — not
+  // just the primary one. A lump-sum payment names the oldest owing invoice as
+  // primary, which is usually the fee bill, so reading items off that alone would
+  // leave a parent looking at a bigger total with nothing saying what they bought.
+  const settledIds = [
+    ...new Set(
+      [
+        payment.invoice ? String((payment.invoice as any)._id ?? payment.invoice) : null,
+        ...payment.allocations.map((a) => String(a.invoice)),
+      ].filter(Boolean) as string[]
+    ),
+  ];
+  let extras: { name: string; amount: number; qty?: number; unitAmount?: number }[] = [];
+  if (settledIds.length) {
+    const settled = await Invoice.find({ _id: { $in: settledIds } }).select("items");
+    extras = settled.flatMap((inv) =>
+      inv.items
+        .filter((it) => it.manual)
+        .map((it) => ({
+          name: it.name,
+          amount: it.amount,
+          qty: it.qty,
+          unitAmount: it.unitAmount,
+        }))
+    );
+  }
+
+  res.json({ payment, extras });
 });

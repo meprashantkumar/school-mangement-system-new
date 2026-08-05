@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, FileText, Layers, Pencil, Grid3x3 } from "lucide-react";
+import { Plus, Trash2, FileText, Layers, Pencil, Grid3x3, ShoppingBag } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import type { FeeHead, FeeStructure } from "@/types";
+import type { ChargeItem, FeeHead, FeeStructure } from "@/types";
 import BulkFeeSetup from "./BulkFeeSetup";
 import { CLASSES, classLabel } from "@/lib/constants";
 import { formatINR } from "@/lib/utils";
@@ -34,10 +34,54 @@ export default function FeeSetup() {
   const [meta, setMeta] = useState({ name: "", class: "", academicYear: "2026-27" });
   const [items, setItems] = useState<ItemRow[]>([{ name: "", amount: "", optional: false }]);
 
+  // The pick-list the counter uses for one-off sales (tie, sweater, book set). Kept
+  // apart from fee heads on purpose: a fee head can be put in a class's monthly
+  // structure, and a tie must never be billed to a whole class every month.
+  const [chargeItems, setChargeItems] = useState<ChargeItem[]>([]);
+  const [chargeForm, setChargeForm] = useState({ name: "", amount: "" });
+
   const load = async () => {
-    const [h, s] = await Promise.all([api.get("/fees/heads"), api.get("/fees/structures")]);
+    const [h, s, c] = await Promise.all([
+      api.get("/fees/heads"),
+      api.get("/fees/structures"),
+      api.get("/charges/items"),
+    ]);
     setFeeHeads(h.data.feeHeads);
     setStructures(s.data.structures);
+    setChargeItems(c.data.chargeItems || []);
+  };
+
+  const addChargeItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chargeForm.name.trim()) return toast.error("Name the item");
+    if (!(Number(chargeForm.amount) > 0)) return toast.error("Enter a price");
+    try {
+      await api.post("/charges/items", {
+        name: chargeForm.name.trim(),
+        amount: Number(chargeForm.amount),
+      });
+      setChargeForm({ name: "", amount: "" });
+      toast.success("Item added");
+      load();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    }
+  };
+
+  const deleteChargeItem = async (item: ChargeItem) => {
+    if (
+      !confirm(
+        `Remove "${item.name}" from the list?\n\nBills that already carry this charge are not affected.`
+      )
+    )
+      return;
+    try {
+      await api.delete(`/charges/items/${item._id}`);
+      toast.success("Removed from the list");
+      load();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    }
   };
 
   useEffect(() => {
@@ -241,6 +285,73 @@ export default function FeeSetup() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sellable extras — the counter's pick-list */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ShoppingBag className="h-5 w-5 text-primary" /> Items sold at the office
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Things a parent buys occasionally — a tie, a sweater, a book set. These are{" "}
+            <span className="font-medium">not</span> part of any class's monthly fee. They're a
+            pick-list for <span className="font-medium">Collect Fee</span>, so the clerk doesn't
+            retype the name and price on every sale. The price here is only a default and can be
+            changed on the spot, and anything not on the list can still be typed in by hand.
+          </p>
+
+          <form onSubmit={addChargeItem} className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[200px] flex-1">
+              <Label className="mb-1 block text-sm text-muted-foreground">Item</Label>
+              <Input
+                placeholder="e.g. Tie"
+                value={chargeForm.name}
+                onChange={(e) => setChargeForm({ ...chargeForm, name: e.target.value })}
+              />
+            </div>
+            <div className="w-32">
+              <Label className="mb-1 block text-sm text-muted-foreground">Price ₹</Label>
+              <Input
+                type="number"
+                min="0"
+                placeholder="150"
+                value={chargeForm.amount}
+                onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+              />
+            </div>
+            <Button type="submit">
+              <Plus className="h-4 w-4" /> Add item
+            </Button>
+          </form>
+
+          {chargeItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing on the list yet. You can still charge anything by typing it in on Collect Fee.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {chargeItems.map((it) => (
+                <span
+                  key={it._id}
+                  className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm"
+                >
+                  <span className="font-medium">{it.name}</span>
+                  <span className="text-muted-foreground">{formatINR(it.amount)}</span>
+                  <button
+                    onClick={() => deleteChargeItem(it)}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Remove from the list"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Create / edit structure dialog */}
       <Dialog open={open} onOpenChange={setOpen}>

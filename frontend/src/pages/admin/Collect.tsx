@@ -10,11 +10,12 @@ import {
   Coins,
   Check,
   Ban,
+  ShoppingBag,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import type { AppConfig, Invoice, Payment, Student } from "@/types";
+import type { AppConfig, ChargeItem, Invoice, Payment, Student } from "@/types";
 import { formatINR } from "@/lib/utils";
 import { CLASSES, SECTIONS, classLabel } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -55,8 +56,18 @@ export default function Collect() {
   const [receipt, setReceipt] = useState<Payment | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Extra charges: a tie, a book, a replacement ID card. The item list only pre-fills
+  // the name and price — "Something else" lets the clerk type anything.
+  const [chargeItems, setChargeItems] = useState<ChargeItem[]>([]);
+  const [chargeOpen, setChargeOpen] = useState(false);
+  const [chargeForm, setChargeForm] = useState({ pick: "", name: "", unitAmount: "", qty: "1" });
+
   useEffect(() => {
     api.get("/config").then(({ data }) => setConfig(data)).catch(() => {});
+    api
+      .get("/charges/items")
+      .then(({ data }) => setChargeItems(data.chargeItems || []))
+      .catch(() => {});
   }, []);
 
   const runSearch = async () => {
@@ -232,6 +243,69 @@ export default function Collect() {
     }
   };
 
+  /* ---- extra charges ---- */
+  const openCharge = () => {
+    setChargeForm({ pick: "", name: "", unitAmount: "", qty: "1" });
+    setChargeOpen(true);
+  };
+
+  // Picking from the list fills the name and price but leaves both editable — prices
+  // change, and the clerk shouldn't have to go and edit the list to sell one sweater.
+  const pickChargeItem = (id: string) => {
+    const it = chargeItems.find((x) => x._id === id);
+    setChargeForm((f) => ({
+      ...f,
+      pick: id,
+      name: it ? it.name : "",
+      unitAmount: it ? String(it.amount) : "",
+    }));
+  };
+
+  const chargeQty = Math.max(1, Math.floor(Number(chargeForm.qty) || 1));
+  const chargeTotal = chargeQty * (Number(chargeForm.unitAmount) || 0);
+
+  const addCharge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selected) return;
+    if (!chargeForm.name.trim()) return toast.error("What is the charge for?");
+    if (!(Number(chargeForm.unitAmount) > 0)) return toast.error("Enter a price above zero");
+    setBusy(true);
+    try {
+      const { data } = await api.post("/charges", {
+        studentId: selected._id,
+        name: chargeForm.name.trim(),
+        unitAmount: Number(chargeForm.unitAmount),
+        qty: chargeQty,
+      });
+      toast.success(data.message || "Charge added");
+      setChargeOpen(false);
+      await loadAccount(selected._id);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeCharge = async (inv: Invoice, index: number) => {
+    if (!selected) return;
+    const line = inv.items[index];
+    if (
+      !confirm(
+        `Remove "${line.name}" (${formatINR(line.amount)}) from this bill?` +
+          `\n\nIf it has already been paid for, the amount is moved to the student's advance credit.`
+      )
+    )
+      return;
+    try {
+      const { data } = await api.delete(`/charges/${inv._id}/${index}`);
+      toast.success(data.message || "Charge removed");
+      await loadAccount(selected._id);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    }
+  };
+
   const applyFine = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fineFor) return;
@@ -376,6 +450,9 @@ export default function Collect() {
                     <Coins className="h-4 w-4" /> Apply credit to dues
                   </Button>
                 )}
+                <Button variant="outline" onClick={openCharge}>
+                  <ShoppingBag className="h-4 w-4" /> Add charge
+                </Button>
                 <Button onClick={openCollect}>
                   <Wallet className="h-4 w-4" /> Collect payment
                 </Button>
@@ -449,9 +526,34 @@ export default function Collect() {
               <CardContent className="space-y-4">
                 <div className="grid gap-1 text-sm sm:grid-cols-2">
                   {inv.items.map((it, i) => (
-                    <div key={i} className="flex justify-between rounded-md border px-3 py-1.5">
-                      <span>{it.name}</span>
-                      <span>{formatINR(it.amount)}</span>
+                    <div
+                      key={i}
+                      className={`flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 ${
+                        it.manual ? "border-primary/30 bg-primary/5" : ""
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="truncate">{it.name}</span>
+                        {/* Only worth showing the sum when more than one was sold. */}
+                        {it.manual && (it.qty || 1) > 1 && (
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · {it.qty} × {formatINR(it.unitAmount ?? 0)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {formatINR(it.amount)}
+                        {it.manual && (
+                          <button
+                            onClick={() => removeCharge(inv, i)}
+                            className="text-muted-foreground hover:text-destructive"
+                            title="Remove this charge"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -695,6 +797,86 @@ export default function Collect() {
             <DialogFooter>
               <Button type="submit" disabled={busy}>
                 {busy ? "Applying..." : "Apply"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add an extra charge — a tie, a book, a replacement ID card */}
+      <Dialog open={chargeOpen} onOpenChange={(o) => !o && setChargeOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add a charge to {selected?.name}'s bill</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={addCharge} className="space-y-4">
+            {chargeItems.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Item</Label>
+                <select
+                  className={`${selectClass} w-full`}
+                  value={chargeForm.pick}
+                  onChange={(e) => pickChargeItem(e.target.value)}
+                >
+                  {/* Deliberately not pre-selecting the first item: a clerk who
+                      doesn't notice would charge the wrong thing at its price. */}
+                  <option value="">Choose from the list, or type it in below…</option>
+                  {chargeItems.map((it) => (
+                    <option key={it._id} value={it._id}>
+                      {it.name} — {formatINR(it.amount)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>{chargeItems.length > 0 ? "Description" : "What is it for?"}</Label>
+              <Input
+                value={chargeForm.name}
+                onChange={(e) => setChargeForm({ ...chargeForm, name: e.target.value })}
+                placeholder="e.g. Tie, Book set, Replacement ID card"
+                required
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1.5">
+                <Label>Price each ₹</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={chargeForm.unitAmount}
+                  onChange={(e) => setChargeForm({ ...chargeForm, unitAmount: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="w-24 space-y-1.5">
+                <Label>Qty</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={chargeForm.qty}
+                  onChange={(e) => setChargeForm({ ...chargeForm, qty: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg bg-primary/5 px-4 py-3">
+              <span className="text-sm font-medium">Adds to the bill</span>
+              <span className="text-xl font-bold text-primary">{formatINR(chargeTotal)}</span>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              This goes on a separate <span className="font-medium">Extra charges</span> bill for
+              this month, so it never attracts a late fee and is never wiped by re-generating the
+              month's fee. Collect it with everything else using{" "}
+              <span className="font-medium">Collect payment</span>.
+            </p>
+
+            <DialogFooter>
+              <Button type="submit" disabled={busy || chargeTotal <= 0}>
+                {busy ? "Adding…" : `Add ${formatINR(chargeTotal)} to bill`}
               </Button>
             </DialogFooter>
           </form>

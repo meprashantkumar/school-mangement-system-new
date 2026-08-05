@@ -185,6 +185,33 @@ export interface StructureItem {
   optional: boolean;
 }
 
+/** A sellable extra the office charges at the counter — tie, sweater, book set. */
+export interface ChargeItem {
+  _id: string;
+  name: string;
+  amount: number;
+  isActive: boolean;
+}
+
+/** One line on a bill. `manual` marks a charge the office added by hand. */
+export interface InvoiceLine {
+  name: string;
+  amount: number; // the line total
+  manual?: boolean;
+  qty?: number;
+  unitAmount?: number;
+  addedAt?: string;
+}
+
+export interface ChargeReportRow {
+  name: string;
+  qty: number;
+  sales: number;
+  billed: number;
+  collected: number;
+  outstanding: number;
+}
+
 export interface FeeStructure {
   _id: string;
   name: string;
@@ -202,7 +229,7 @@ export interface Invoice {
   period: string;
   periodLabel: string;
   dueDate?: string;
-  items: { name: string; amount: number }[];
+  items: InvoiceLine[];
   concessions: { reason: string; amount: number }[];
   totalAmount: number;
   discountAmount: number;

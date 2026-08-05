@@ -47,10 +47,16 @@ async function generateForStructure(
     // instead of edited), checking by structure would bill the student once per
     // structure, double-counting shared items like Transport. Any existing invoice
     // for this month in this session means the student is already billed: skip.
+    //
+    // "Already billed" means billed FROM A STRUCTURE, hence the feeStructure check.
+    // Extra charges (a tie, a book) sit on their own structure-less invoice for the
+    // month — without this they would count as "already billed" and the student's
+    // actual monthly fee would never be generated at all.
     const exists = await Invoice.findOne({
       student: student._id,
       period,
       academicYear: structure.academicYear,
+      feeStructure: { $exists: true },
     });
     if (exists) {
       skipped += 1;
@@ -304,7 +310,10 @@ export const deleteInvoiceRun = asyncHandler(async (req, res) => {
   const { period, class: className, session } = req.query as Record<string, string>;
   if (!period) throw new ApiError(400, "period is required");
 
-  const filter: Record<string, unknown> = { period };
+  // Only invoices that a generation run created, which is what there is to undo.
+  // Extra charges live on their own structure-less invoice for the month, and a tie
+  // sold at the counter has nothing to do with re-running the month's billing.
+  const filter: Record<string, unknown> = { period, feeStructure: { $exists: true } };
   if (className) filter.class = className;
   if (session) filter.academicYear = session;
 

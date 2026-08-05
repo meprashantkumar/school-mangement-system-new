@@ -2,7 +2,16 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface InvoiceItem {
   name: string;
-  amount: number;
+  amount: number; // the LINE total (unitAmount x qty) — every total below sums this
+  // Set only on charges the office added by hand after the bill was generated (a tie,
+  // a book, a replacement ID card). `amount` stays the line total precisely so the
+  // totals maths, the dues, the portal and the reports need no special cases; these
+  // fields exist to label the line, price it per unit, and say who added it.
+  manual?: boolean;
+  qty?: number;
+  unitAmount?: number;
+  addedBy?: Types.ObjectId;
+  addedAt?: Date;
 }
 
 export interface InvoiceConcession {
@@ -48,6 +57,11 @@ const invoiceSchema = new Schema<IInvoice>(
       {
         name: { type: String, required: true },
         amount: { type: Number, required: true, min: 0 },
+        manual: { type: Boolean },
+        qty: { type: Number, min: 1 },
+        unitAmount: { type: Number, min: 0 },
+        addedBy: { type: Schema.Types.ObjectId, ref: "User" },
+        addedAt: { type: Date },
       },
     ],
     concessions: [

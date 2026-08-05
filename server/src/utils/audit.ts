@@ -35,6 +35,7 @@ export const AUDIT = {
   FEE_GENERATION: "Fee generation",
   PAYMENT: "Payment",
   ADJUSTMENT: "Concession/Fine",
+  CHARGE: "Extra charge",
   REMINDER: "Reminder",
   TEACHER: "Teacher",
   STAFF: "Staff",
