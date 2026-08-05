@@ -29,16 +29,18 @@ export interface Holiday {
   date: string;
   name: string;
   session: string;
+  class?: string; // "" = the whole school; otherwise this class only
   groupId?: string; // set when the day is part of a multi-day break
 }
 
-/** A multi-day break (summer vacation, etc.) summarised from its per-day rows. */
+/** A break (summer vacation, etc.) summarised from its per-day, per-class rows. */
 export interface HolidayGroup {
   groupId: string;
   name: string;
   from: string;
   to: string;
-  days: number;
+  days: number; // distinct days, not rows
+  classes: string[]; // [""] = the whole school
 }
 
 export interface AttendanceRow {
@@ -56,7 +58,13 @@ export interface RosterDay {
   class: string;
   section: string;
   date: string;
-  dayInfo: { sunday: boolean; holiday: boolean; holidayName: string | null };
+  dayInfo: {
+    sunday: boolean;
+    holiday: boolean;
+    holidayName: string | null;
+    holidayClass?: string | null; // "" when it's a school-wide holiday
+    holidayScope?: "school" | "class" | null;
+  };
   students: AttendanceRow[];
   counts: {
     present: number;

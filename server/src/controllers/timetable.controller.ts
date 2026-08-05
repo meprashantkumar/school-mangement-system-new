@@ -166,10 +166,15 @@ export const getSubstitutionBoard = asyncHandler(async (req, res) => {
   let reason: string | null = null;
   if (isSundayKey(dateKey)) reason = "Sunday — weekly off";
   else if (!config.workingDays.includes(iso)) reason = `${weekdayLabel} is not a working day`;
-  const holiday = await Holiday.findOne({ dateKey });
-  if (holiday) {
+  // Only a school-wide holiday closes the board. One class being off (board exams,
+  // say) leaves everyone else teaching — and frees up that class's teachers to cover,
+  // which is exactly what this screen is for, so those slots are dropped below.
+  const holidays = await Holiday.find({ dateKey }).select("name class");
+  const schoolHoliday = holidays.find((h) => !h.class);
+  const classesOff = holidays.filter((h) => h.class).map((h) => h.class);
+  if (schoolHoliday) {
     working = false;
-    reason = `Holiday — ${holiday.name}`;
+    reason = `Holiday — ${schoolHoliday.name}`;
   }
 
   const teachers = await Teacher.find({ isActive: true }).select("name designation").sort({ name: 1 });
@@ -182,7 +187,7 @@ export const getSubstitutionBoard = asyncHandler(async (req, res) => {
   if (!working) {
     return res.json({
       date: dateKey, weekday: iso, weekdayLabel, working: false, reason,
-      periods: [], teachers: teacherList, grid: [],
+      periods: [], teachers: teacherList, grid: [], classesOnHoliday: [],
     });
   }
 
@@ -192,8 +197,10 @@ export const getSubstitutionBoard = asyncHandler(async (req, res) => {
     teacher: string; teacherName: string; class: string; section: string;
     subjectName: string; period: number;
   };
+  const offToday = new Set(classesOff);
   const busyAll: Busy[] = [];
   for (const tt of tts) {
+    if (offToday.has(tt.class)) continue; // that class is on holiday — its periods aren't running
     for (const s of tt.slots) {
       if (s.day !== iso || !s.teacher) continue;
       busyAll.push({
@@ -219,6 +226,8 @@ export const getSubstitutionBoard = asyncHandler(async (req, res) => {
     periods: activePeriods.map((p) => ({ period: p, label: labelOf(p) })),
     teachers: teacherList,
     grid,
+    // Classes off today, so the screen can explain why their teachers look free.
+    classesOnHoliday: [...offToday],
   });
 });
 

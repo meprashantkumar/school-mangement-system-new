@@ -26,6 +26,12 @@ const todayKey = () => new Date().toLocaleDateString("en-CA");
 const fmtDay = (dateKey: string) =>
   new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
+// A holiday's scope, for display. An empty class name means the whole school.
+const scopeText = (classes: string[]) =>
+  !classes.length || classes.some((c) => !c)
+    ? "Whole school"
+    : classes.map(classLabel).join(", ");
+
 function Pct({ pct }: { pct: number | null }) {
   if (pct === null) return <span className="text-muted-foreground">—</span>;
   return (
@@ -50,6 +56,27 @@ export default function AttendanceView() {
   const [holidayMode, setHolidayMode] = useState<"day" | "range">("day");
   const [rangeForm, setRangeForm] = useState({ from: todayKey(), to: todayKey(), name: "" });
   const [savingRange, setSavingRange] = useState(false);
+  // Who the holiday is for. Whole school is the default and the common case; picking
+  // classes is for things like "Class 10 is off during board exams". Shared by both
+  // forms, since the picker sits above them.
+  const [scopeMode, setScopeMode] = useState<"school" | "classes">("school");
+  const [scopeClasses, setScopeClasses] = useState<string[]>([]);
+
+  // What goes on the wire: no `classes` at all means the whole school.
+  const scopePayload = () => (scopeMode === "classes" ? { classes: scopeClasses } : {});
+  const scopeReady = () => {
+    if (scopeMode === "classes" && scopeClasses.length === 0) {
+      toast.error("Pick at least one class, or choose Whole school");
+      return false;
+    }
+    return true;
+  };
+  const resetScope = () => {
+    setScopeMode("school");
+    setScopeClasses([]);
+  };
+  const toggleScopeClass = (c: string) =>
+    setScopeClasses((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   const loadHolidays = () =>
     api
@@ -69,21 +96,37 @@ export default function AttendanceView() {
       setRoster(null);
       return;
     }
+    // Changing the class and the date in quick succession leaves two requests in
+    // flight, and whichever answers last used to win — so the table could show a
+    // different day than the date box, holiday banner included. Ignore the answer to
+    // a question we've already moved on from.
+    let live = true;
     setLoading(true);
     api
       .get("/teachers/attendance", { params: { class: cls, section, date } })
-      .then(({ data }) => setRoster(data))
-      .catch((err) => toast.error(err?.response?.data?.message || "Failed to load"))
-      .finally(() => setLoading(false));
+      .then(({ data }) => {
+        if (live) setRoster(data);
+      })
+      .catch((err) => {
+        if (live) toast.error(err?.response?.data?.message || "Failed to load");
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
   }, [cls, section, date]);
 
   const addHoliday = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!holidayForm.name.trim()) return toast.error("Enter a holiday name");
+    if (!scopeReady()) return;
     try {
-      await api.post("/holidays", holidayForm);
-      toast.success("Holiday added");
+      const { data } = await api.post("/holidays", { ...holidayForm, ...scopePayload() });
+      toast.success(data.message || "Holiday added");
       setHolidayForm({ date: todayKey(), name: "" });
+      resetScope();
       loadHolidays();
       if (cls && section) {
         const { data } = await api.get("/teachers/attendance", { params: { class: cls, section, date } });
@@ -106,12 +149,18 @@ export default function AttendanceView() {
     e.preventDefault();
     if (!rangeForm.name.trim()) return toast.error("Enter a name, e.g. Summer Vacation");
     if (rangeForm.from > rangeForm.to) return toast.error("The start date must come before the end");
+    if (!scopeReady()) return;
 
     // The server refuses with 409 when attendance has already been taken on days in
     // the range, and says which. Show them and let the office decide — it will not
     // throw away a teacher's attendance on its own.
     const post = (confirmIt: boolean) =>
-      api.post("/holidays", { ...rangeForm, name: rangeForm.name.trim(), confirm: confirmIt });
+      api.post("/holidays", {
+        ...rangeForm,
+        name: rangeForm.name.trim(),
+        ...scopePayload(),
+        confirm: confirmIt,
+      });
 
     setSavingRange(true);
     try {
@@ -128,6 +177,7 @@ export default function AttendanceView() {
       }
       toast.success(res.data.message || "Holiday added");
       setRangeForm({ from: todayKey(), to: todayKey(), name: "" });
+      resetScope();
       loadHolidays();
       await refreshRoster();
     } catch (err: any) {
@@ -138,7 +188,14 @@ export default function AttendanceView() {
   };
 
   const removeGroup = async (g: HolidayGroup) => {
-    if (!confirm(`Remove "${g.name}" — all ${g.days} day(s) from ${g.from} to ${g.to}?`)) return;
+    if (
+      !confirm(
+        `Remove "${g.name}" — all ${g.days} day(s) from ${g.from} to ${g.to}, for ${scopeText(
+          g.classes
+        ).toLowerCase()}?`
+      )
+    )
+      return;
     try {
       const { data } = await api.delete(`/holidays/group/${g.groupId}`);
       toast.success(data.message || "Removed");
@@ -150,9 +207,12 @@ export default function AttendanceView() {
   };
 
   const removeHoliday = async (h: Holiday) => {
-    if (!confirm(`Remove holiday "${h.name}" on ${h.dateKey}?`)) return;
+    const who = h.class ? ` (${classLabel(h.class)})` : "";
+    if (!confirm(`Remove holiday "${h.name}" on ${h.dateKey}${who}?`)) return;
     try {
-      await api.delete(`/holidays/${h.dateKey}`);
+      // The class matters: a day can carry a school-wide holiday and a class-only one,
+      // and removing one must not take the other with it.
+      await api.delete(`/holidays/${h.dateKey}`, { params: { class: h.class || "" } });
       toast.success("Holiday removed");
       loadHolidays();
       // Refresh the roster too, so the amber "Holiday" banner clears if we were
@@ -168,6 +228,8 @@ export default function AttendanceView() {
 
   const day = roster?.dayInfo;
   const c = roster?.counts;
+  // Anything not part of a break shows as its own chip; breaks show as one line each.
+  const singles = holidays.filter((h) => !h.groupId);
 
   return (
     <div className="space-y-6">
@@ -239,8 +301,12 @@ export default function AttendanceView() {
             <p className="py-10 text-center text-muted-foreground">Loading…</p>
           ) : day && (day.sunday || day.holiday) ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
-              {day.sunday ? "Sunday — weekly off." : `Holiday: ${day.holidayName}.`} No attendance on
-              this day.
+              {day.sunday
+                ? "Sunday — weekly off."
+                : `Holiday: ${day.holidayName}${
+                    day.holidayScope === "class" ? ` (${classLabel(cls)} only)` : ""
+                  }.`}{" "}
+              No attendance on this day.
             </div>
           ) : (
             roster && (
@@ -349,6 +415,76 @@ export default function AttendanceView() {
             ))}
           </div>
 
+          {/* Who it applies to. Whole school is the default; a class holiday is for
+              things like "Class 10 is off during board exams" and leaves everyone
+              else — including the staff — working as normal. */}
+          <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm text-muted-foreground">Applies to</span>
+              <div className="inline-flex rounded-lg border bg-background p-0.5">
+                {([
+                  ["school", "Whole school"],
+                  ["classes", "Specific classes"],
+                ] as const).map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setScopeMode(m)}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                      scopeMode === m
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {scopeMode === "classes" ? (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {CLASSES.map((c2) => {
+                    const on = scopeClasses.includes(c2);
+                    return (
+                      <button
+                        key={c2}
+                        type="button"
+                        onClick={() => toggleScopeClass(c2)}
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-sm transition-colors",
+                          on
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "bg-background hover:border-primary/50"
+                        )}
+                      >
+                        {classLabel(c2)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Only these classes get the day off. Everyone else — and the teaching
+                  and non-teaching staff — is unaffected. To close the school, use
+                  <button
+                    type="button"
+                    onClick={resetScope}
+                    className="mx-1 font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    Whole school
+                  </button>
+                  instead of ticking every class.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Every class, plus teaching and non-teaching staff, gets the day off.
+              </p>
+            )}
+          </div>
+
           {holidayMode === "day" ? (
             <form onSubmit={addHoliday} className="flex flex-wrap items-end gap-3">
               <div>
@@ -420,7 +556,16 @@ export default function AttendanceView() {
                   <span>
                     <span className="font-medium">{g.name}</span>{" "}
                     <span className="text-muted-foreground">
-                      {fmtDay(g.from)} – {fmtDay(g.to)} · {g.days} day{g.days === 1 ? "" : "s"}
+                      {g.from === g.to ? (
+                        fmtDay(g.from)
+                      ) : (
+                        <>
+                          {fmtDay(g.from)} – {fmtDay(g.to)} · {g.days} day
+                          {g.days === 1 ? "" : "s"}
+                        </>
+                      )}
+                      {" · "}
+                      {scopeText(g.classes)}
                     </span>
                   </span>
                   <button
@@ -436,30 +581,33 @@ export default function AttendanceView() {
           )}
 
           {/* Single days (anything not part of a break) */}
-          {holidays.length === 0 ? (
+          {singles.length === 0 && groups.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No holidays added. Sundays are already treated as weekly offs automatically.
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {holidays
-                .filter((h) => !h.groupId)
-                .map((h) => (
-                  <span
-                    key={h._id}
-                    className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm"
+              {singles.map((h) => (
+                <span
+                  key={h._id}
+                  className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm"
+                >
+                  <span className="font-medium">{h.name}</span>
+                  <span className="text-muted-foreground">{fmtDay(h.dateKey)}</span>
+                  {h.class && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      {classLabel(h.class)}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => removeHoliday(h)}
+                    className="text-muted-foreground hover:text-destructive"
+                    title="Remove"
                   >
-                    <span className="font-medium">{h.name}</span>
-                    <span className="text-muted-foreground">{fmtDay(h.dateKey)}</span>
-                    <button
-                      onClick={() => removeHoliday(h)}
-                      className="text-muted-foreground hover:text-destructive"
-                      title="Remove"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                ))}
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
             </div>
           )}
         </CardContent>

@@ -29,12 +29,17 @@ const roundPct = (present: number, absent: number): number | null => {
   return total > 0 ? Math.round((present / total) * 100) : null;
 };
 
+// Holidays that apply to one class: the whole-school ones (class "") plus any
+// declared for that class alone. Every holiday lookup in here goes through this, so
+// a Class 10 break never changes Class 9's numbers.
+const holidayScopeFor = (cls: string) => ({ $in: ["", cls] });
+
 // Per-student present/absent tallies for the session up to (and including) a day,
 // excluding Sundays and named holidays. Returns a map by student id.
 const computeRates = async (cls: string, section: string, uptoKey: string) => {
-  const holidayKeys = (await Holiday.find({ session: CURRENT_SESSION }).select("dateKey")).map(
-    (h) => h.dateKey
-  );
+  const holidayKeys = (
+    await Holiday.find({ session: CURRENT_SESSION, class: holidayScopeFor(cls) }).select("dateKey")
+  ).map((h) => h.dateKey);
 
   const rows = await Attendance.aggregate([
     {
@@ -74,11 +79,19 @@ const byRoll = (a: { rollNo?: string; name: string }, b: { rollNo?: string; name
 // that day's status, their running % (green/red is decided on the client), the
 // day's info (holiday/Sunday), and headline counts.
 const buildRoster = async (cls: string, section: string, dateKey: string) => {
-  const holiday = await Holiday.findOne({ dateKey });
+  // "" sorts before any class name, so a whole-school holiday wins the label on a day
+  // that happens to have both.
+  const holiday = await Holiday.findOne({ dateKey, class: holidayScopeFor(cls) }).sort({ class: 1 });
   const dayInfo = {
     sunday: isSundayKey(dateKey),
     holiday: !!holiday,
     holidayName: holiday?.name || null,
+    // Which holiday this is, so the UI can say "Class 5 only" and delete the right row.
+    holidayClass: holiday ? holiday.class || "" : null,
+    holidayScope: (holiday ? (holiday.class ? "class" : "school") : null) as
+      | "class"
+      | "school"
+      | null,
   };
 
   const students = (
@@ -176,7 +189,9 @@ export const markOne = asyncHandler(async (req, res) => {
   assertAssigned(teacher, student.class, student.section || "");
 
   if (isSundayKey(dateKey)) throw new ApiError(400, "That day is a Sunday (weekly off)");
-  if (await Holiday.exists({ dateKey })) throw new ApiError(400, "That day is a holiday");
+  if (await Holiday.exists({ dateKey, class: holidayScopeFor(student.class) })) {
+    throw new ApiError(400, "That day is a holiday");
+  }
 
   const attendance = await Attendance.findOneAndUpdate(
     { student: student._id, dateKey },
@@ -218,7 +233,9 @@ export const markBulk = asyncHandler(async (req, res) => {
   assertAssigned(teacher, cls, section);
   const dateKey = toDateKey(date);
   if (isSundayKey(dateKey)) throw new ApiError(400, "That day is a Sunday (weekly off)");
-  if (await Holiday.exists({ dateKey })) throw new ApiError(400, "That day is a holiday");
+  if (await Holiday.exists({ dateKey, class: holidayScopeFor(cls) })) {
+    throw new ApiError(400, "That day is a holiday");
+  }
 
   const filter: Record<string, unknown> = {
     class: cls,

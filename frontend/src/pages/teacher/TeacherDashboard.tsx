@@ -108,24 +108,37 @@ export default function TeacherDashboard() {
       .catch(() => {});
   }, []);
 
-  const loadRoster = useCallback(async () => {
-    if (!selected) return;
-    setLoading(true);
-    try {
-      const { data } = await api.get("/teacher/attendance", {
-        params: { class: selected.class, section: selected.section, date },
-      });
-      setRoster(data);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Couldn't load class");
-      setRoster(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [selected, date]);
+  // `isStale` lets the caller cancel: tapping through days quickly leaves several
+  // requests in flight, and without it the slowest one wins and the screen shows a
+  // different day than the date bar says. Callers that refresh after a change (marking
+  // a holiday, say) pass nothing — theirs is the only request running.
+  const loadRoster = useCallback(
+    async (isStale?: () => boolean) => {
+      if (!selected) return;
+      setLoading(true);
+      try {
+        const { data } = await api.get("/teacher/attendance", {
+          params: { class: selected.class, section: selected.section, date },
+        });
+        if (isStale?.()) return;
+        setRoster(data);
+      } catch (err: any) {
+        if (isStale?.()) return;
+        toast.error(err?.response?.data?.message || "Couldn't load class");
+        setRoster(null);
+      } finally {
+        if (!isStale?.()) setLoading(false);
+      }
+    },
+    [selected, date]
+  );
 
   useEffect(() => {
-    loadRoster();
+    let stale = false;
+    loadRoster(() => stale);
+    return () => {
+      stale = true;
+    };
   }, [loadRoster]);
 
   const dayInfo = roster?.dayInfo;
@@ -210,7 +223,12 @@ export default function TeacherDashboard() {
 
   const removeHoliday = async () => {
     try {
-      await api.delete(`/holidays/${date}`);
+      // A day can hold a school-wide holiday and a class-only one, so say which this
+      // is. The office declares the class ones and only the office can clear them —
+      // the server refuses politely if a teacher tries.
+      await api.delete(`/holidays/${date}`, {
+        params: { class: dayInfo?.holidayClass || "" },
+      });
       await loadRoster();
       toast.success("Holiday removed");
     } catch (err: any) {
@@ -371,9 +389,15 @@ export default function TeacherDashboard() {
                   {dayInfo?.sunday ? "Sunday — weekly off" : `Holiday: ${dayInfo?.holidayName}`}
                 </p>
                 <p className="mt-1 text-sm text-amber-700">
-                  No attendance is taken on this day and it doesn't count toward the percentage.
+                  {dayInfo?.holidayScope === "class"
+                    ? `The office has given ${
+                        selected ? classLabel(selected.class) : "this class"
+                      } the day off. No attendance is taken and it doesn't count toward the percentage.`
+                    : "No attendance is taken on this day and it doesn't count toward the percentage."}
                 </p>
-                {dayInfo?.holiday && (
+                {/* Only the day the school itself is closed can be cleared here — a
+                    class holiday is the office's call, so there's no button for it. */}
+                {dayInfo?.holiday && dayInfo?.holidayScope !== "class" && (
                   <Button variant="outline" className="mt-4 h-11" onClick={removeHoliday}>
                     Remove holiday
                   </Button>

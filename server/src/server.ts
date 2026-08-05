@@ -4,6 +4,7 @@ import { connectDB } from "./config/db";
 import { ensureSuperAdmin } from "./config/seedSuperAdmin";
 import { ensureUserIndexes } from "./utils/ensureUserIndexes";
 import { normalizeStoredPhones } from "./utils/normalizeStoredPhones";
+import { migrateHolidayScope } from "./utils/migrateHolidayScope";
 import { runLateFeeSweep } from "./utils/lateFee";
 
 const start = async () => {
@@ -14,6 +15,9 @@ const start = async () => {
   // Mobile numbers are login IDs, so store them all in one canonical form —
   // otherwise a parent logs in but matches none of their children.
   await normalizeStoredPhones();
+  // Existing holidays predate the whole-school/per-class scope — give them one, and
+  // replace the dateKey-only unique index that would now reject a class holiday.
+  await migrateHolidayScope();
   await ensureSuperAdmin();
 
   // Apply auto late fees on boot, then re-check periodically while running.

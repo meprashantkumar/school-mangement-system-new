@@ -132,9 +132,14 @@ const roundPct = (present: number, absent: number): number | null => {
   return total > 0 ? Math.round((present / total) * 100) : null;
 };
 
-// Per-person present/absent up to a day, excluding Sundays and named holidays.
+// Staff only get the day off when the WHOLE school is closed. A holiday declared for
+// one class (board exams, say) still has the teachers and the office in — so every
+// holiday query in here is pinned to class "".
+const SCHOOL_WIDE = { class: "" };
+
+// Per-person present/absent up to a day, excluding Sundays and school-wide holidays.
 const computeStaffRates = async (uptoKey: string) => {
-  const holidayKeys = (await Holiday.find().select("dateKey")).map((h) => h.dateKey);
+  const holidayKeys = (await Holiday.find(SCHOOL_WIDE).select("dateKey")).map((h) => h.dateKey);
   const rows = await StaffAttendance.aggregate([
     { $match: { dateKey: { $lte: uptoKey, $nin: holidayKeys } } },
     { $match: { $expr: { $ne: [{ $dayOfWeek: "$date" }, 1] } } },
@@ -152,7 +157,7 @@ const computeStaffRates = async (uptoKey: string) => {
 };
 
 const buildStaffRoster = async (dateKey: string) => {
-  const holiday = await Holiday.findOne({ dateKey });
+  const holiday = await Holiday.findOne({ dateKey, ...SCHOOL_WIDE });
   const dayInfo = { sunday: isSundayKey(dateKey), holiday: !!holiday, holidayName: holiday?.name || null };
 
   const [teachers, staff] = await Promise.all([
@@ -217,7 +222,7 @@ export const markStaffOne = asyncHandler(async (req, res) => {
   if (personKind !== "teacher" && personKind !== "staff") throw new ApiError(400, "Invalid personKind");
   const dateKey = toDateKey(date);
   if (isSundayKey(dateKey)) throw new ApiError(400, "That day is a Sunday (weekly off)");
-  if (await Holiday.exists({ dateKey })) throw new ApiError(400, "That day is a holiday");
+  if (await Holiday.exists({ dateKey, ...SCHOOL_WIDE })) throw new ApiError(400, "That day is a holiday");
 
   const exists =
     personKind === "teacher" ? await Teacher.exists({ _id: personId }) : await Staff.exists({ _id: personId });
@@ -252,7 +257,7 @@ export const markStaffBulk = asyncHandler(async (req, res) => {
   if (status !== "present" && status !== "absent") throw new ApiError(400, "status must be present/absent");
   const dateKey = toDateKey(date);
   if (isSundayKey(dateKey)) throw new ApiError(400, "That day is a Sunday (weekly off)");
-  if (await Holiday.exists({ dateKey })) throw new ApiError(400, "That day is a holiday");
+  if (await Holiday.exists({ dateKey, ...SCHOOL_WIDE })) throw new ApiError(400, "That day is a holiday");
 
   const [teachers, staff] = await Promise.all([
     Teacher.find({ isActive: true }).select("_id"),
