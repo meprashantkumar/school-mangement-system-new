@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CalendarDays, Plus, Trash2, PalmtreeIcon, GraduationCap, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import type { Holiday, RosterDay } from "@/types";
+import type { Holiday, HolidayGroup, RosterDay } from "@/types";
 import { CLASSES, SECTIONS, classLabel } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { StaffAttendancePanel } from "@/components/StaffAttendancePanel";
@@ -22,6 +22,9 @@ const selectClass =
   "flex h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const todayKey = () => new Date().toLocaleDateString("en-CA");
+// "2026-05-10" -> "10 May". Built from the key so it never drifts a day by timezone.
+const fmtDay = (dateKey: string) =>
+  new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
 function Pct({ pct }: { pct: number | null }) {
   if (pct === null) return <span className="text-muted-foreground">—</span>;
@@ -41,12 +44,20 @@ export default function AttendanceView() {
 
   const [tab, setTab] = useState<"students" | "staff">("students");
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [groups, setGroups] = useState<HolidayGroup[]>([]);
   const [holidayForm, setHolidayForm] = useState({ date: todayKey(), name: "" });
+  // A vacation is entered as a range; one-off festivals stay a single date.
+  const [holidayMode, setHolidayMode] = useState<"day" | "range">("day");
+  const [rangeForm, setRangeForm] = useState({ from: todayKey(), to: todayKey(), name: "" });
+  const [savingRange, setSavingRange] = useState(false);
 
   const loadHolidays = () =>
     api
       .get("/holidays")
-      .then(({ data }) => setHolidays(data.holidays))
+      .then(({ data }) => {
+        setHolidays(data.holidays || []);
+        setGroups(data.groups || []);
+      })
       .catch(() => {});
 
   useEffect(() => {
@@ -78,6 +89,61 @@ export default function AttendanceView() {
         const { data } = await api.get("/teachers/attendance", { params: { class: cls, section, date } });
         setRoster(data);
       }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    }
+  };
+
+  const refreshRoster = async () => {
+    if (!cls || !section) return;
+    const { data } = await api.get("/teachers/attendance", {
+      params: { class: cls, section, date },
+    });
+    setRoster(data);
+  };
+
+  const addRange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rangeForm.name.trim()) return toast.error("Enter a name, e.g. Summer Vacation");
+    if (rangeForm.from > rangeForm.to) return toast.error("The start date must come before the end");
+
+    // The server refuses with 409 when attendance has already been taken on days in
+    // the range, and says which. Show them and let the office decide — it will not
+    // throw away a teacher's attendance on its own.
+    const post = (confirmIt: boolean) =>
+      api.post("/holidays", { ...rangeForm, name: rangeForm.name.trim(), confirm: confirmIt });
+
+    setSavingRange(true);
+    try {
+      let res;
+      try {
+        res = await post(false);
+      } catch (err: any) {
+        const d = err?.response?.data;
+        if (err?.response?.status !== 409 || !d?.needsConfirmation) throw err;
+        const days = (d.clashes || []).join(", ");
+        if (!confirm(`${d.message}\n\nDays with attendance already taken:\n${days}\n\nMark the holiday anyway?`))
+          return;
+        res = await post(true);
+      }
+      toast.success(res.data.message || "Holiday added");
+      setRangeForm({ from: todayKey(), to: todayKey(), name: "" });
+      loadHolidays();
+      await refreshRoster();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed");
+    } finally {
+      setSavingRange(false);
+    }
+  };
+
+  const removeGroup = async (g: HolidayGroup) => {
+    if (!confirm(`Remove "${g.name}" — all ${g.days} day(s) from ${g.from} to ${g.to}?`)) return;
+    try {
+      const { data } = await api.delete(`/holidays/group/${g.groupId}`);
+      toast.success(data.message || "Removed");
+      loadHolidays();
+      await refreshRoster();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed");
     }
@@ -260,55 +326,140 @@ export default function AttendanceView() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form onSubmit={addHoliday} className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="mb-1 block text-sm text-muted-foreground">Date</label>
-              <Input
-                type="date"
-                value={holidayForm.date}
-                onChange={(e) => setHolidayForm((f) => ({ ...f, date: e.target.value }))}
-              />
-            </div>
-            <div className="flex-1 min-w-[180px]">
-              <label className="mb-1 block text-sm text-muted-foreground">Name</label>
-              <Input
-                placeholder="e.g. Diwali"
-                value={holidayForm.name}
-                onChange={(e) => setHolidayForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <Button type="submit">
-              <Plus className="h-4 w-4" /> Add holiday
-            </Button>
-          </form>
+          {/* One festival day, or a whole vacation — the second is why this toggle
+              exists: marking 45 days one at a time is not a workflow. */}
+          <div className="inline-flex rounded-lg border p-0.5">
+            {([
+              ["day", "Single day"],
+              ["range", "Date range"],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setHolidayMode(m)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  holidayMode === m
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
+          {holidayMode === "day" ? (
+            <form onSubmit={addHoliday} className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="mb-1 block text-sm text-muted-foreground">Date</label>
+                <Input
+                  type="date"
+                  value={holidayForm.date}
+                  onChange={(e) => setHolidayForm((f) => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="mb-1 block text-sm text-muted-foreground">Name</label>
+                <Input
+                  placeholder="e.g. Diwali"
+                  value={holidayForm.name}
+                  onChange={(e) => setHolidayForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <Button type="submit">
+                <Plus className="h-4 w-4" /> Add holiday
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={addRange} className="space-y-2">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="mb-1 block text-sm text-muted-foreground">From</label>
+                  <Input
+                    type="date"
+                    value={rangeForm.from}
+                    onChange={(e) => setRangeForm((f) => ({ ...f, from: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-muted-foreground">To</label>
+                  <Input
+                    type="date"
+                    value={rangeForm.to}
+                    onChange={(e) => setRangeForm((f) => ({ ...f, to: e.target.value }))}
+                  />
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <label className="mb-1 block text-sm text-muted-foreground">Name</label>
+                  <Input
+                    placeholder="e.g. Summer Vacation"
+                    value={rangeForm.name}
+                    onChange={(e) => setRangeForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <Button type="submit" disabled={savingRange}>
+                  <Plus className="h-4 w-4" /> {savingRange ? "Adding…" : "Add holiday"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Sundays inside the range are skipped — they are already weekly offs. Days that are
+                already a holiday keep the name they have.
+              </p>
+            </form>
+          )}
+
+          {/* Multi-day breaks: one line each, removable as a whole */}
+          {groups.length > 0 && (
+            <div className="space-y-2">
+              {groups.map((g) => (
+                <div
+                  key={g.groupId}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-sm"
+                >
+                  <span>
+                    <span className="font-medium">{g.name}</span>{" "}
+                    <span className="text-muted-foreground">
+                      {fmtDay(g.from)} – {fmtDay(g.to)} · {g.days} day{g.days === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => removeGroup(g)}
+                    className="flex items-center gap-1 text-muted-foreground hover:text-destructive"
+                    title="Remove the whole break"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Remove all
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Single days (anything not part of a break) */}
           {holidays.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No holidays added. Sundays are already treated as weekly offs automatically.
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {holidays.map((h) => (
-                <span
-                  key={h._id}
-                  className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm"
-                >
-                  <span className="font-medium">{h.name}</span>
-                  <span className="text-muted-foreground">
-                    {new Date(`${h.dateKey}T00:00:00`).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </span>
-                  <button
-                    onClick={() => removeHoliday(h)}
-                    className="text-muted-foreground hover:text-destructive"
-                    title="Remove"
+              {holidays
+                .filter((h) => !h.groupId)
+                .map((h) => (
+                  <span
+                    key={h._id}
+                    className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              ))}
+                    <span className="font-medium">{h.name}</span>
+                    <span className="text-muted-foreground">{fmtDay(h.dateKey)}</span>
+                    <button
+                      onClick={() => removeHoliday(h)}
+                      className="text-muted-foreground hover:text-destructive"
+                      title="Remove"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                ))}
             </div>
           )}
         </CardContent>

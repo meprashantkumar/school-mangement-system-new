@@ -29,6 +29,16 @@ export interface Holiday {
   date: string;
   name: string;
   session: string;
+  groupId?: string; // set when the day is part of a multi-day break
+}
+
+/** A multi-day break (summer vacation, etc.) summarised from its per-day rows. */
+export interface HolidayGroup {
+  groupId: string;
+  name: string;
+  from: string;
+  to: string;
+  days: number;
 }
 
 export interface AttendanceRow {
