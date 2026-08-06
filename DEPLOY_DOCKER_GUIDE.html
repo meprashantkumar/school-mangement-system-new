@@ -284,7 +284,7 @@ sudo systemctl reload nginx</pre></div>
   <!-- 13 -->
   <div class="step">
     <h2><span class="n">13</span> Get free HTTPS (Certbot) <span class="tag both">BOTH</span></h2>
-    <p>Choose <b>redirect HTTP → HTTPS</b> when asked. Certbot also auto-renews.</p>
+    <p>Choose <b>redirect HTTP → HTTPS</b> when asked. Certbot also auto-renews — check that it really will, once, in <b>Step 21</b>.</p>
     <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot --nginx -d school1.mydomain.in</pre></div>
   </div>
 
@@ -651,6 +651,48 @@ done</pre></div>
       <li><b>More than that</b>, or bigger schools: move to 2–4 GB and go back to Steps 1–19, one Mongo per school.</li>
     </ul>
     <div class="note">The caps matter in both directions. Node sizes its heap from total system RAM, so without <code class="inl">API_HEAP_MB</code> three APIs each assume they may use half the box; and the frontend build needs <code class="inl">BUILD_HEAP</code> raised to 1 GB or <code class="inl">tsc</code> gets OOM-killed part-way through.</div>
+  </div>
+
+  <!-- 21 -->
+  <div class="step">
+    <h2><span class="n">21</span> Keep HTTPS alive — renewing the certificates <span class="tag both">BOTH</span></h2>
+    <p>A Let's Encrypt certificate lasts <b>90 days</b>. That is by design, and it is not something you have to diary: Certbot installs a timer that runs twice a day, sees the certificate is inside its last 30 days, renews it, and reloads Nginx. In practice every domain renews itself at <b>day 60</b>, silently, for years. Nothing here is per-school — one timer on the box looks after <b>every</b> domain you have issued, school 1 and school 2 alike.</p>
+    <p>The catch is that a renewal you have never tested is a renewal you are only hoping for. Run these three <b>once</b> the day you deploy, and again after adding a school:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot certificates              <span class="c"># every domain on this box + days left</span>
+systemctl list-timers | grep certbot   <span class="c"># is renewal actually scheduled?</span>
+sudo certbot renew --dry-run           <span class="c"># rehearses a REAL renewal, changes nothing</span></pre></div>
+    <p>The dry run is the one that matters. It performs the whole renewal against Let's Encrypt's staging system for <b>all</b> your domains at once, so a clean result means both schools will renew in 60 days' time. Expect one <code class="inl">Congratulations, all simulated renewals succeeded</code> line listing each domain.</p>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">A. Renewing by hand</h3>
+    <p>You should never need this, but it is harmless and takes seconds. <code class="inl">renew</code> covers every school on the box and skips anything not yet due:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot renew
+sudo systemctl reload nginx</pre></div>
+    <p>To renew a single school ahead of time — say you are moving its domain — name it:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot renew --cert-name sunrise.mydomain.in --force-renewal
+sudo systemctl reload nginx</pre></div>
+    <div class="note">Always <b>reload Nginx afterwards</b>. Nginx holds the certificate in memory, so without a reload it keeps serving the expired one and you will swear the renewal did nothing. The <code class="inl">--nginx</code> plugin does this for you on the automatic path; on a forced manual renewal, do it yourself.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">B. If a certificate has already expired</h3>
+    <p>The site shows <code class="inl">NET::ERR_CERT_DATE_INVALID</code> and the school will tell you the system is down. It is not — the containers, the API and the database are all running normally, and <b>no data is at risk</b>. Only the padlock has lapsed. Two commands:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot renew --force-renewal
+sudo systemctl reload nginx</pre></div>
+    <p>If that fails, re-issue the domain outright and let the plugin rewrite the server block:</p>
+    <div class="cmd"><button class="copy-btn" onclick="copyCmd(this)">Copy</button><pre>sudo certbot --nginx -d school1.mydomain.in</pre></div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">C. When renewal fails, it is nearly always one of these</h3>
+    <table class="k">
+      <tr><th style="width:30%">Symptom</th><th>Cause and cure</th></tr>
+      <tr><td>Timeout during the challenge</td><td><b>Port 80 is shut.</b> Let's Encrypt proves you own the domain over plain HTTP, so 80 must stay open <i>forever</i> — not only at first issue. <span class="tag aws">AWS</span> Security Group inbound 80. <span class="tag ora">ORACLE</span> the host firewall too (Step 4).</td></tr>
+      <tr><td><code class="inl">Address already in use</code></td><td>The certificate was first issued with <code class="inl">--standalone</code> while Nginx was stopped, so renewal tries the same trick and finds Nginx on port 80. Re-issue once with <code class="inl">--nginx</code> and it renews cleanly from then on.</td></tr>
+      <tr><td>DNS / NXDOMAIN</td><td>The domain no longer points at this server, or was moved to another box. Fix the A record first, wait for it to resolve, then renew.</td></tr>
+      <tr><td>Renewed, but the browser still complains</td><td>Nginx was not reloaded. <code class="inl">sudo systemctl reload nginx</code>.</td></tr>
+      <tr><td>Nothing scheduled at all</td><td><code class="inl">sudo systemctl enable --now certbot.timer</code>, then re-run the dry run.</td></tr>
+    </table>
+    <div class="warn"><b>Nobody will warn you.</b> Let's Encrypt stopped sending expiry-reminder emails, so an expired certificate arrives with no notice at all. That is the whole reason for the dry run at deployment time — it is the only thing standing between you and a Monday morning phone call.</div>
+
+    <h3 style="margin:12px 0 2px;font-size:12.5px;color:#1e3a8a">D. Adding a school later</h3>
+    <p>Issuing a certificate for a new domain (Step 15F) leaves the existing schools' certificates untouched and adds the new one to the same renewal timer automatically. Nothing extra to schedule — just re-run the dry run afterwards so you know all of them are covered.</p>
+    <div class="note"><b>Certificates live on the host, not in Docker.</b> Host Nginx terminates TLS and proxies to each school's container, so Certbot only ever deals with the host. Rebuilding, restarting or updating a school's containers (Step 17) cannot affect HTTPS, and renewal never needs the containers to be running.</div>
   </div>
 
   <div class="footer">School Fee &amp; ERP Management System — Docker deployment. Replace YOUR_STATIC_IP, your-key.pem, the domains, and all secrets with your own.</div>
