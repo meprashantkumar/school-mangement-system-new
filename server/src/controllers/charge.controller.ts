@@ -1,9 +1,10 @@
 import { asyncHandler } from "../utils/asyncHandler";
+import { currentSession } from "../utils/session";
 import { ApiError } from "../utils/ApiError";
 import { ChargeItem } from "../models/ChargeItem";
 import { Invoice } from "../models/Invoice";
 import { Student } from "../models/Student";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { logAudit, AUDIT } from "../utils/audit";
 
 const MONTHS = [
@@ -134,7 +135,7 @@ export const addCharge = asyncHandler(async (req, res) => {
   const invoice = await extrasInvoiceFor(
     String(student._id),
     student.class,
-    student.session || CURRENT_SESSION
+    student.session || currentSession()
   );
 
   const amount = Math.round(unit * count);

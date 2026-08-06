@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSettings } from "@/context/SettingsContext";
 import {
   Plus,
   Trophy,
@@ -18,7 +19,6 @@ import type { Exam, ExamEntry, ExamResults, OverallResults } from "@/types";
 import {
   CLASSES,
   SECTIONS,
-  CURRENT_SESSION,
   classLabel,
   examTypeLabel,
   EXAM_TYPES,
@@ -365,7 +365,10 @@ type Detail =
 
 export default function ExamsResults() {
   const [klass, setKlass] = useState("");
-  const [session, setSession] = useState(CURRENT_SESSION);
+  const { currentSession } = useSettings();
+  const [session, setSession] = useState(currentSession);
+  // Settings can land after this page mounts, so follow the running session.
+  useEffect(() => setSession(currentSession), [currentSession]);
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
   const [exams, setExams] = useState<Exam[]>([]);

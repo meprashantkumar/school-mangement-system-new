@@ -1,8 +1,9 @@
 import { asyncHandler } from "../utils/asyncHandler";
+import { currentSession } from "../utils/session";
 import { ApiError } from "../utils/ApiError";
 import { Teacher, IAssignment } from "../models/Teacher";
 import { User } from "../models/User";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { normalizePhone } from "../utils/phone";
 import { logAudit, AUDIT } from "../utils/audit";
 import { moveToTrash } from "./trash.controller";
@@ -22,7 +23,7 @@ const normaliseAssignments = (raw: unknown): IAssignment[] => {
     const key = `${cls}|${section}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ class: cls, section, session: CURRENT_SESSION });
+    out.push({ class: cls, section, session: currentSession() });
   }
   return out;
 };
@@ -34,7 +35,7 @@ const assertAssignmentsFree = async (assignments: IAssignment[], excludeId?: str
     const clash = await Teacher.findOne({
       _id: { $ne: excludeId },
       isActive: true,
-      assignments: { $elemMatch: { class: a.class, section: a.section, session: CURRENT_SESSION } },
+      assignments: { $elemMatch: { class: a.class, section: a.section, session: currentSession() } },
     });
     if (clash) {
       throw new ApiError(

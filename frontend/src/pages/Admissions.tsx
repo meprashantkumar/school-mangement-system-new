@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { GraduationCap, CheckCircle2, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import { CLASSES, CATEGORIES, CURRENT_SESSION, classLabel } from "@/lib/constants";
+import { CLASSES, CATEGORIES, classLabel } from "@/lib/constants";
 import { SCHOOL } from "@/lib/school";
 import { Crest } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,17 @@ export default function Admissions() {
   const [form, setForm] = useState({ ...empty });
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // This form is public, so the session comes from the public config rather than a
+  // logged-in settings call. It is only for the heading — the server stamps the
+  // application with the session the school is actually running.
+  const [session, setSession] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/config")
+      .then(({ data }) => setSession(data.currentSession || ""))
+      .catch(() => {});
+  }, []);
 
   const set = (k: keyof typeof empty, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -39,7 +50,7 @@ export default function Admissions() {
     }
     setSubmitting(true);
     try {
-      const { data } = await api.post("/admissions/public", { ...form, session: CURRENT_SESSION });
+      const { data } = await api.post("/admissions/public", form);
       setDone(data.applicationNo);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
@@ -100,7 +111,7 @@ export default function Admissions() {
               <div>
                 <h1 className="font-heading text-2xl font-bold tracking-tight">Admission Application</h1>
                 <p className="text-sm text-muted-foreground">
-                  Fill this form to apply for admission for session {CURRENT_SESSION}. Fields marked * are required.
+                  Fill this form to apply for admission{session ? ` for session ${session}` : ""}. Fields marked * are required.
                 </p>
               </div>
             </div>

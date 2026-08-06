@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ArrowUpCircle, RotateCcw } from "lucide-react";
+import { useSettings, type SessionReadiness, type SessionUndo } from "@/context/SettingsContext";
+import { ArrowUpCircle, CalendarClock, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { PromotionRun, Student } from "@/types";
@@ -43,25 +44,98 @@ export default function PromoteStudentsDialog({
   const [promoting, setPromoting] = useState(false);
   const [runs, setRuns] = useState<PromotionRun[]>([]);
   const [undoing, setUndoing] = useState<string | null>(null);
-  // How far this school goes. Promotion stops here — the last class passes out
-  // instead of moving up into a class the school does not teach.
-  const [highestClass, setHighestClass] = useState("12");
+  // How far this school goes, and which year it is running. Promotion stops at the
+  // last class, and every register is read for the running session.
+  const {
+    highestClass,
+    currentSession,
+    nextSession: followingSession,
+    readiness,
+    save,
+    refresh,
+  } = useSettings();
   const [savingHighest, setSavingHighest] = useState(false);
+  const [rolloverOpen, setRolloverOpen] = useState(false);
+  const [rolloverTo, setRolloverTo] = useState("");
+  const [rolloverCheck, setRolloverCheck] = useState<SessionReadiness | null>(null);
+  const [rollingOver, setRollingOver] = useState(false);
+  // Starting a session is reversible, like a promotion — this is what it would take
+  // back, and what was entered in the meantime that it cannot.
+  const [sessionUndo, setSessionUndo] = useState<SessionUndo | null>(null);
+  const [undoingSession, setUndoingSession] = useState(false);
+
+  const loadSessionUndo = () =>
+    api
+      .get("/settings/session-undo")
+      .then(({ data }) => setSessionUndo(data.canUndo ? data : null))
+      .catch(() => setSessionUndo(null));
+
+  const undoSession = async () => {
+    const entered = sessionUndo?.entered;
+    const strandedCount = entered ? Object.values(entered).reduce((a, b) => a + b, 0) : 0;
+    const warning = strandedCount
+      ? `\n\n${strandedCount} record(s) were entered while ${sessionUndo?.from} was running. Those belong to ${sessionUndo?.from} and stay hidden until you start it again.`
+      : "";
+    if (!confirm(`Go back to ${sessionUndo?.back}? Nothing is deleted either way.${warning}`)) return;
+    setUndoingSession(true);
+    try {
+      const { data } = await api.post("/settings/session-undo");
+      toast.success(data.message, { duration: 9000 });
+      await refresh();
+      await loadSessionUndo();
+      onDone();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Could not undo that");
+    } finally {
+      setUndoingSession(false);
+    }
+  };
 
   const saveHighestClass = async (value: string) => {
-    const previous = highestClass;
-    setHighestClass(value); // reflect the choice at once; put it back if it is refused
     setSavingHighest(true);
     try {
-      const { data } = await api.put("/settings", { highestClass: value });
-      setHighestClass(data.highestClass);
-      toast.success(data.message);
-      if (klass && !classesUpTo(data.highestClass).includes(klass)) setKlass("");
+      const message = await save({ highestClass: value });
+      toast.success(message);
+      if (klass && !classesUpTo(value).includes(klass)) setKlass("");
     } catch (err: any) {
-      setHighestClass(previous);
       toast.error(err?.response?.data?.message || "Could not save that");
     } finally {
       setSavingHighest(false);
+    }
+  };
+
+  // What the school would find in the target session — students already promoted
+  // into it, and the three things that have to follow before it feels ready.
+  const openRollover = async () => {
+    const target = followingSession || nextSession(currentSession);
+    setRolloverTo(target);
+    setRolloverCheck(null);
+    setRolloverOpen(true);
+    try {
+      const { data } = await api.get("/settings/session-readiness", {
+        params: { session: target },
+      });
+      setRolloverCheck(data.readiness);
+    } catch {
+      /* the dialog still works without the preview */
+    }
+  };
+
+  const startNewSession = async () => {
+    if (!/^\d{4}-\d{2}$/.test(rolloverTo.trim())) {
+      return toast.error('A session looks like "2027-28"');
+    }
+    setRollingOver(true);
+    try {
+      const message = await save({ currentSession: rolloverTo.trim() });
+      toast.success(message);
+      setRolloverOpen(false);
+      await loadSessionUndo(); // the undo becomes available straight away
+      onDone();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Could not start the new session");
+    } finally {
+      setRollingOver(false);
     }
   };
 
@@ -97,10 +171,8 @@ export default function PromoteStudentsDialog({
       setPreview([]);
       setFailedIds(new Set());
       loadRuns();
-      api
-        .get("/settings")
-        .then(({ data }) => setHighestClass(data.highestClass || "12"))
-        .catch(() => {});
+      refresh();
+      loadSessionUndo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -155,6 +227,15 @@ export default function PromoteStudentsDialog({
         failedIds: [...failedIds],
       });
       toast.success(`${data.message} You can undo this from "Recent promotions".`);
+      // Their new class is invisible until the school starts that session, so say so
+      // here rather than let it be found when a register comes up empty.
+      if (data.sessionWarning) {
+        toast.error(data.sessionWarning, { duration: 12000 });
+        await refresh();
+        setRolloverTo(toSession);
+        onDone();
+        return; // keep the dialog open — starting the session is the next step
+      }
       onOpenChange(false);
       onDone();
     } catch (err: any) {
@@ -194,6 +275,33 @@ export default function PromoteStudentsDialog({
               </div>
             </div>
           )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+            <span>
+              <span className="text-muted-foreground">Running session</span>{" "}
+              <b>{currentSession}</b>
+              {readiness && readiness.classTeachers === 0 && readiness.students > 0 && (
+                <span className="ml-2 text-amber-700">· no class teacher assigned yet</span>
+              )}
+            </span>
+            <span className="flex items-center gap-2">
+              {sessionUndo?.canUndo && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={undoSession}
+                  disabled={undoingSession}
+                  title={`Go back to ${sessionUndo.back}`}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {undoingSession ? "Undoing…" : `Undo — back to ${sessionUndo.back}`}
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={openRollover}>
+                <CalendarClock className="h-3.5 w-3.5" /> Start new session
+              </Button>
+            </span>
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
             <span className="text-muted-foreground">This school teaches up to</span>
@@ -339,6 +447,84 @@ export default function PromoteStudentsDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Starting the new academic year: the one action that makes the promoted
+          classes visible, and the checklist that has to follow it. */}
+      <Dialog open={rolloverOpen} onOpenChange={setRolloverOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" /> Start a new session
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <p className="text-muted-foreground">
+              Registers, timetables, exams and each teacher's own classes are all read for
+              the session the school is running. Nothing is deleted when you move it —{" "}
+              <b>{currentSession}</b> stays on record exactly as it is, and attendance
+              percentages start fresh in the new year.
+            </p>
+            <div className="flex items-center gap-2">
+              <Label className="whitespace-nowrap">Move from {currentSession} to</Label>
+              <Input
+                className="h-9 w-32"
+                value={rolloverTo}
+                onChange={(e) => setRolloverTo(e.target.value)}
+                placeholder="2027-28"
+              />
+            </div>
+
+            {rolloverCheck && (
+              <div className="rounded-lg border">
+                <div className="border-b bg-muted/40 px-3 py-2 font-medium">
+                  What's ready in {rolloverCheck.session}
+                </div>
+                <ul className="divide-y">
+                  {[
+                    { label: "Students promoted into it", n: rolloverCheck.students, need: true },
+                    { label: "Class teachers assigned", n: rolloverCheck.classTeachers, need: true },
+                    { label: "Fee structures created", n: rolloverCheck.structures, need: true },
+                    { label: "Holidays added", n: rolloverCheck.holidays, need: false },
+                  ].map((row) => (
+                    <li key={row.label} className="flex items-center justify-between px-3 py-1.5">
+                      <span>{row.label}</span>
+                      <span
+                        className={
+                          row.n > 0
+                            ? "font-medium text-emerald-600"
+                            : row.need
+                            ? "font-medium text-amber-600"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {row.n > 0 ? row.n : row.need ? "none yet" : "none"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-muted-foreground">
+              You can start the session first and fill these in afterwards — but until a
+              class has a class teacher and a fee structure, nobody can mark its attendance
+              or bill it.
+            </p>
+            <p className="text-muted-foreground">
+              Done by mistake? <b>Undo</b> appears next to this button and puts the school
+              straight back on {currentSession}.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRolloverOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={startNewSession} disabled={rollingOver || !rolloverTo.trim()}>
+              {rollingOver ? "Starting…" : `Start ${rolloverTo || "the new session"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

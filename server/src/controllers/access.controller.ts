@@ -1,10 +1,11 @@
 import crypto from "crypto";
+import { currentSession } from "../utils/session";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { User } from "../models/User";
 import { Student } from "../models/Student";
 import { Teacher } from "../models/Teacher";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { normalizePhone, isValidPhone } from "../utils/phone";
 import { logAudit, AUDIT } from "../utils/audit";
 
@@ -154,7 +155,7 @@ export const bulkStudentAccess = asyncHandler(async (req, res) => {
 
   const filter: Record<string, unknown> = {
     class: String(className).trim(),
-    session: session || CURRENT_SESSION,
+    session: session || currentSession(),
     status: "active",
   };
   if (section) filter.section = section;

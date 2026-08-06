@@ -1,11 +1,12 @@
 import { Types } from "mongoose";
+import { currentSession } from "../utils/session";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { Attendance } from "../models/Attendance";
 import { Holiday } from "../models/Holiday";
 import { Student } from "../models/Student";
 import { ITeacher } from "../models/Teacher";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
 import { teacherForUser } from "../utils/teacherForUser";
 import { logAudit, AUDIT } from "../utils/audit";
@@ -15,7 +16,7 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 
 const isAssigned = (teacher: ITeacher, cls: string, section: string) =>
   teacher.assignments.some(
-    (a) => a.class === cls && a.section === section && a.session === CURRENT_SESSION
+    (a) => a.class === cls && a.section === section && a.session === currentSession()
   );
 
 const assertAssigned = (teacher: ITeacher, cls: string, section: string) => {
@@ -38,7 +39,7 @@ const holidayScopeFor = (cls: string) => ({ $in: ["", cls] });
 // excluding Sundays and named holidays. Returns a map by student id.
 const computeRates = async (cls: string, section: string, uptoKey: string) => {
   const holidayKeys = (
-    await Holiday.find({ session: CURRENT_SESSION, class: holidayScopeFor(cls) }).select("dateKey")
+    await Holiday.find({ session: currentSession(), class: holidayScopeFor(cls) }).select("dateKey")
   ).map((h) => h.dateKey);
 
   const rows = await Attendance.aggregate([
@@ -46,7 +47,7 @@ const computeRates = async (cls: string, section: string, uptoKey: string) => {
       $match: {
         class: cls,
         section,
-        session: CURRENT_SESSION,
+        session: currentSession(),
         dateKey: { $lte: uptoKey, $nin: holidayKeys },
       },
     },
@@ -98,7 +99,7 @@ const buildRoster = async (cls: string, section: string, dateKey: string) => {
     await Student.find({
       class: cls,
       section,
-      session: CURRENT_SESSION,
+      session: currentSession(),
       status: "active",
     }).select("name admissionNo rollNo class section gender")
   ).sort(byRoll);
@@ -106,7 +107,7 @@ const buildRoster = async (cls: string, section: string, dateKey: string) => {
   const dayRecords = await Attendance.find({
     class: cls,
     section,
-    session: CURRENT_SESSION,
+    session: currentSession(),
     dateKey,
   }).select("student status");
   const statusById = new Map(dayRecords.map((r) => [String(r.student), r.status]));
@@ -161,7 +162,7 @@ export const getMyClasses = asyncHandler(async (req, res) => {
   const teacher = await teacherForUser(req);
   res.json({
     teacher: { name: teacher.name, email: teacher.email, designation: teacher.designation },
-    assignments: teacher.assignments.filter((a) => a.session === CURRENT_SESSION),
+    assignments: teacher.assignments.filter((a) => a.session === currentSession()),
   });
 });
 
@@ -199,7 +200,7 @@ export const markOne = asyncHandler(async (req, res) => {
       student: student._id,
       class: student.class,
       section: student.section || "",
-      session: CURRENT_SESSION,
+      session: currentSession(),
       dateKey,
       date: dateFromKey(dateKey),
       status,
@@ -240,7 +241,7 @@ export const markBulk = asyncHandler(async (req, res) => {
   const filter: Record<string, unknown> = {
     class: cls,
     section,
-    session: CURRENT_SESSION,
+    session: currentSession(),
     status: "active",
   };
   if (Array.isArray(studentIds) && studentIds.length) {
@@ -256,7 +257,7 @@ export const markBulk = asyncHandler(async (req, res) => {
           student: s._id,
           class: cls,
           section,
-          session: CURRENT_SESSION,
+          session: currentSession(),
           dateKey,
           date: dateFromKey(dateKey),
           status,

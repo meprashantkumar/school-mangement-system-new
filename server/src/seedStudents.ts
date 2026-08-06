@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { connectDB } from "./config/db";
-import { CURRENT_SESSION } from "./utils/academics";
+import { DEFAULT_SESSION } from "./utils/academics";
 import { Student } from "./models/Student";
 
 // Seeds 100 sample students spread across every class and section, so the fee
@@ -56,7 +56,7 @@ const buildStudents = () => {
     students.push({
       admissionNo: `ADM${1001 + i}`,
       name: `${first} ${last}`,
-      session: CURRENT_SESSION,
+      session: DEFAULT_SESSION,
       class: cls,
       section,
       rollNo: String(Math.floor(i / CLASSES.length) + 1),
@@ -78,7 +78,7 @@ const run = async () => {
   // Normalise any legacy records that predate the `session` field.
   const backfill = await Student.updateMany(
     { $or: [{ session: { $exists: false } }, { session: null }, { session: "" }] },
-    { $set: { session: CURRENT_SESSION } }
+    { $set: { session: DEFAULT_SESSION } }
   );
   if (backfill.modifiedCount) {
     console.log(`Backfilled session on ${backfill.modifiedCount} existing student(s).`);

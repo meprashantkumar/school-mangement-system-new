@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
-import { CURRENT_SESSION } from "../utils/academics";
+import { currentSession } from "../utils/session";
 
 // One filled cell of a class's weekly timetable: on this day + period, this
 // subject is taught by this teacher. Subject/teacher names are snapshotted so the
@@ -41,7 +41,7 @@ const classTimetableSchema = new Schema<IClassTimetable>(
   {
     class: { type: String, required: true, trim: true },
     section: { type: String, required: true, trim: true },
-    session: { type: String, default: CURRENT_SESSION, trim: true },
+    session: { type: String, default: () => currentSession(), trim: true },
     slots: { type: [slotSchema], default: [] },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User" },
   },

@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
-import { CURRENT_SESSION } from "../utils/academics";
+import { currentSession } from "../utils/session";
+
 import { normalizePhone } from "../utils/phone";
 
 // A snapshot of where a student sat in a past academic session. Promotion
@@ -73,7 +74,7 @@ const studentSchema = new Schema<IStudent>(
     name: { type: String, required: true, trim: true },
     dateOfAdmission: { type: Date, default: Date.now },
     dateOfBirth: { type: Date },
-    session: { type: String, default: CURRENT_SESSION, trim: true },
+    session: { type: String, default: () => currentSession(), trim: true },
     class: { type: String, required: true, trim: true },
     section: { type: String, trim: true },
     rollNo: { type: String, trim: true },

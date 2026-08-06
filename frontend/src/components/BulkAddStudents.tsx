@@ -3,7 +3,8 @@ import { Plus, Trash2, Wand2, CopyCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { FeeHead, FeeStructure } from "@/types";
-import { CLASSES, SECTIONS, classLabel, CURRENT_SESSION } from "@/lib/constants";
+import { CLASSES, SECTIONS, classLabel } from "@/lib/constants";
+import { useSettings } from "@/context/SettingsContext";
 import { formatINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,8 +92,9 @@ export default function BulkAddStudents({
   sessions,
   onDone,
 }: Props) {
+  const { currentSession } = useSettings();
   const [shared, setShared] = useState({
-    session: CURRENT_SESSION,
+    session: currentSession,
     class: "",
     section: "",
     dateOfAdmission: today(),
@@ -106,7 +108,7 @@ export default function BulkAddStudents({
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
-  const sessionOptions = Array.from(new Set([CURRENT_SESSION, ...sessions]));
+  const sessionOptions = Array.from(new Set([currentSession, ...sessions]));
 
   // The class's base amount for an optional service (from its fee structure).
   const baseFeeFor = (headName: string): number | null => {
@@ -119,7 +121,7 @@ export default function BulkAddStudents({
 
   const reset = () => {
     setShared({
-      session: CURRENT_SESSION,
+      session: currentSession,
       class: "",
       section: "",
       dateOfAdmission: today(),

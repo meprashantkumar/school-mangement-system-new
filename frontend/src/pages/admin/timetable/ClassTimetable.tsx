@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSettings } from "@/context/SettingsContext";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Save, Settings2, Plus, Trash2, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Subject, Teacher, PeriodSlot, TimetableSlot } from "@/types";
-import { CLASSES, SECTIONS, CURRENT_SESSION, recentSessions, classLabel, WEEKDAYS, weekdayLong } from "@/lib/constants";
+import { CLASSES, SECTIONS, recentSessions, classLabel, WEEKDAYS, weekdayLong } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,10 @@ const key = (day: number, period: number) => `${day}_${period}`;
 export default function ClassTimetable() {
   const [klass, setKlass] = useState(CLASSES[3]);
   const [section, setSection] = useState(SECTIONS[0]);
-  const [session, setSession] = useState(CURRENT_SESSION);
+  const { currentSession } = useSettings();
+  const [session, setSession] = useState(currentSession);
+  // Settings can land after this page mounts, so follow the running session.
+  useEffect(() => setSession(currentSession), [currentSession]);
 
   const [periods, setPeriods] = useState<PeriodSlot[]>([]);
   const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);

@@ -1,4 +1,5 @@
 import { Request } from "express";
+import { currentSession } from "../utils/session";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { Exam, IExam, IExamSubject } from "../models/Exam";
@@ -7,7 +8,7 @@ import { Subject } from "../models/Subject";
 import { Student, IStudent } from "../models/Student";
 import { ITeacher } from "../models/Teacher";
 import { Trash } from "../models/Trash";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { defaultPassMarks, defaultWeightFor, round2 } from "../utils/exams";
 import { teacherForUser } from "../utils/teacherForUser";
 import { logAudit, AUDIT } from "../utils/audit";
@@ -21,7 +22,7 @@ const normType = (t: unknown) => (EXAM_TYPE_VALUES.includes(String(t)) ? String(
 
 const isAssigned = (teacher: ITeacher, cls: string, section: string) =>
   teacher.assignments.some(
-    (a) => a.class === cls && a.section === section && a.session === CURRENT_SESSION
+    (a) => a.class === cls && a.section === section && a.session === currentSession()
   );
 
 // Natural roll-number order (1, 2, 10 — not 1, 10, 2), falling back to name.
@@ -382,7 +383,7 @@ const studentInSection = async (studentId: string, cls: string, section: string,
 
 // GET /api/exams?session=&class=
 export const listExams = asyncHandler(async (req, res) => {
-  const session = String(req.query.session || CURRENT_SESSION);
+  const session = String(req.query.session || currentSession());
   const filter: Record<string, unknown> = { session };
   if (req.query.class) filter.class = String(req.query.class);
   const exams = await Exam.find(filter).sort({ class: 1, createdAt: 1 });
@@ -402,7 +403,7 @@ const createExamFor = async (req: Request, createdBy: unknown) => {
   const name = req.body.name != null ? String(req.body.name).trim() : "";
   const cls = req.body.class != null ? String(req.body.class).trim() : "";
   if (!name || !cls) throw new ApiError(400, "Exam name and class are required");
-  const session = req.body.session ? String(req.body.session) : CURRENT_SESSION;
+  const session = req.body.session ? String(req.body.session) : currentSession();
 
   const existing = await Exam.findOne({ session, class: cls, name });
   if (existing) return { exam: existing, existed: true };
@@ -542,7 +543,7 @@ export const getExamResults = asyncHandler(async (req, res) => {
 
 // GET /api/exams/overall?session=&class=  (super admin / admin) — weighted final rank
 export const getOverallResults = asyncHandler(async (req, res) => {
-  const session = String(req.query.session || CURRENT_SESSION);
+  const session = String(req.query.session || currentSession());
   const cls = String(req.query.class || "");
   if (!cls) throw new ApiError(400, "class is required");
   const { exams, totalWeight, rows, classSize } = await computeOverall(session, cls);
@@ -595,14 +596,14 @@ export const teacherListExams = asyncHandler(async (req, res) => {
   const classes = [
     ...new Set(
       teacher.assignments
-        .filter((a) => a.session === CURRENT_SESSION)
+        .filter((a) => a.session === currentSession())
         .map((a) => a.class)
     ),
   ];
   const exams = classes.length
-    ? await Exam.find({ session: CURRENT_SESSION, class: { $in: classes } }).sort({ class: 1, createdAt: 1 })
+    ? await Exam.find({ session: currentSession(), class: { $in: classes } }).sort({ class: 1, createdAt: 1 })
     : [];
-  res.json({ exams, assignments: teacher.assignments.filter((a) => a.session === CURRENT_SESSION) });
+  res.json({ exams, assignments: teacher.assignments.filter((a) => a.session === currentSession()) });
 });
 
 // POST /api/teacher/exams  — teacher creates (or reuses) an exam for their class
@@ -610,7 +611,7 @@ export const teacherCreateExam = asyncHandler(async (req, res) => {
   const teacher = await teacherForUser(req);
   const cls = req.body.class != null ? String(req.body.class).trim() : "";
   const assignedToClass = teacher.assignments.some(
-    (a) => a.class === cls && a.session === CURRENT_SESSION
+    (a) => a.class === cls && a.session === currentSession()
   );
   if (!assignedToClass) throw new ApiError(403, `You are not a class-teacher of class ${cls}`);
   const { exam, existed } = await createExamFor(req, req.user!._id);
@@ -672,7 +673,7 @@ export const clearMarkTeacher = asyncHandler(async (req, res) => {
 export const resultsForStudents = async (students: IStudent[]) => {
   const out = [];
   for (const st of students) {
-    const session = st.session || CURRENT_SESSION;
+    const session = st.session || currentSession();
     const exams = await Exam.find({ class: st.class, session, published: true }).sort({ createdAt: 1 });
 
     const examResults = [];

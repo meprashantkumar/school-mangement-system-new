@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
-import { CURRENT_SESSION } from "../utils/academics";
+import { currentSession } from "../utils/session";
 
 // One subject line inside an exam. The subject name + max/pass marks are snapshotted
 // at definition time so results stay stable even if the master subject changes.
@@ -42,7 +42,7 @@ const examSchema = new Schema<IExam>(
   {
     name: { type: String, required: true, trim: true },
     type: { type: String, default: "other" },
-    session: { type: String, default: CURRENT_SESSION },
+    session: { type: String, default: () => currentSession() },
     class: { type: String, required: true },
     weight: { type: Number, default: 10, min: 0 },
     subjects: { type: [examSubjectSchema], default: [] },

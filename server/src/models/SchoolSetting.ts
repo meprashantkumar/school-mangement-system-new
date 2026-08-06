@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import { DEFAULT_SESSION } from "../utils/academics";
 
 // School-wide academic settings — a single document, like the timetable's bell
 // schedule. Kept in the database rather than the env file so a school can change
@@ -10,6 +11,17 @@ export interface ISchoolSetting extends Document {
   // does not exist. "10" for a school up to matriculation, "8" for a middle school,
   // "12" for a senior secondary one.
   highestClass: string;
+  // The academic session the school is currently running, e.g. "2026-27". Rosters,
+  // attendance, exams, timetables and class-teacher assignments are all read for
+  // this session, so it is what makes April feel like a new year. It lives here
+  // rather than in the code because moving it is the school's decision, taken on
+  // their own promotion day — not something they should wait for a release for.
+  currentSession: string;
+  // The session in use before the last change, so starting a new year can be put
+  // back with one click — the same reversibility promotion already has. Set only
+  // when the session actually moves.
+  previousSession?: string;
+  sessionChangedAt?: Date;
   updatedBy?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -18,6 +30,9 @@ export interface ISchoolSetting extends Document {
 const schoolSettingSchema = new Schema<ISchoolSetting>(
   {
     highestClass: { type: String, default: "12", trim: true },
+    currentSession: { type: String, default: DEFAULT_SESSION, trim: true },
+    previousSession: { type: String, trim: true },
+    sessionChangedAt: { type: Date },
     updatedBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }

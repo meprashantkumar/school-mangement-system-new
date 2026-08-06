@@ -1,9 +1,10 @@
 import { randomUUID } from "crypto";
+import { currentSession } from "../utils/session";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { Holiday } from "../models/Holiday";
 import { Attendance } from "../models/Attendance";
-import { CURRENT_SESSION, CLASSES } from "../utils/academics";
+import { CLASSES } from "../utils/academics";
 import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
 import { logAudit, AUDIT } from "../utils/audit";
 
@@ -45,7 +46,7 @@ const scopeLabel = (classes: string[]): string =>
 // summary, so a 45-day break shows as one line in the UI instead of 45 — or 90 if it
 // was declared for two classes.
 export const getHolidays = asyncHandler(async (req, res) => {
-  const session = (req.query.session as string) || CURRENT_SESSION;
+  const session = (req.query.session as string) || currentSession();
   const holidays = await Holiday.find({ session }).sort({ dateKey: 1, class: 1 });
 
   type Group = {
@@ -126,7 +127,7 @@ export const addHoliday = asyncHandler(async (req, res) => {
               dateKey,
               date: dateFromKey(dateKey),
               name: label,
-              session: CURRENT_SESSION,
+              session: currentSession(),
               class: cls,
               createdBy: req.user!._id,
               ...(groupId ? { groupId } : {}),
@@ -220,7 +221,7 @@ export const addHoliday = asyncHandler(async (req, res) => {
         dateKey: p.dateKey,
         date: dateFromKey(p.dateKey),
         name: label,
-        session: CURRENT_SESSION,
+        session: currentSession(),
         class: p.class,
         groupId,
         createdBy: req.user!._id,

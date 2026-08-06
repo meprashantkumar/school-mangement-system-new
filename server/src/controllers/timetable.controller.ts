@@ -1,4 +1,5 @@
 import { asyncHandler } from "../utils/asyncHandler";
+import { currentSession } from "../utils/session";
 import { ApiError } from "../utils/ApiError";
 import { TimetableConfig, DEFAULT_PERIODS, IPeriodSlot } from "../models/TimetableConfig";
 import { ClassTimetable, ITimetableSlot } from "../models/ClassTimetable";
@@ -7,7 +8,7 @@ import { Exam } from "../models/Exam";
 import { Teacher } from "../models/Teacher";
 import { Student } from "../models/Student";
 import { Holiday } from "../models/Holiday";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
 import { findChildren } from "../utils/children";
 import { teacherForUser } from "../utils/teacherForUser";
@@ -65,7 +66,7 @@ export const updateConfig = asyncHandler(async (req, res) => {
 export const getClassTimetable = asyncHandler(async (req, res) => {
   const cls = String(req.query.class || "").trim();
   const section = String(req.query.section || "").trim();
-  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const session = String(req.query.session || currentSession()).trim();
   if (!cls || !section) throw new ApiError(400, "Class and section are required");
   const timetable = await ClassTimetable.findOne({ class: cls, section, session });
   res.json({ timetable: timetable || { class: cls, section, session, slots: [] } });
@@ -75,7 +76,7 @@ export const getClassTimetable = asyncHandler(async (req, res) => {
 export const saveClassTimetable = asyncHandler(async (req, res) => {
   const cls = String(req.body.class || "").trim();
   const section = String(req.body.section || "").trim();
-  const session = String(req.body.session || CURRENT_SESSION).trim();
+  const session = String(req.body.session || currentSession()).trim();
   if (!cls || !section) throw new ApiError(400, "Class and section are required");
 
   const slots: ITimetableSlot[] = Array.isArray(req.body.slots)
@@ -129,7 +130,7 @@ export const saveClassTimetable = asyncHandler(async (req, res) => {
 // Which teachers are already booked in each day+period across every OTHER class,
 // so the editor can hide them and prevent a clash before it's created.
 export const getBusyTeachers = asyncHandler(async (req, res) => {
-  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const session = String(req.query.session || currentSession()).trim();
   const exClass = String(req.query.excludeClass || "").trim();
   const exSection = String(req.query.excludeSection || "").trim();
 
@@ -154,7 +155,7 @@ export const getBusyTeachers = asyncHandler(async (req, res) => {
 // nothing is stored. Sundays and named holidays return working:false.
 export const getSubstitutionBoard = asyncHandler(async (req, res) => {
   const dateKey = toDateKey(req.query.date || new Date().toISOString());
-  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const session = String(req.query.session || currentSession()).trim();
   const dow = dateFromKey(dateKey).getUTCDay(); // 0=Sun..6=Sat
   const iso = dow === 0 ? 7 : dow; // 1=Mon..7=Sun (matches slot.day)
   const weekdayLabel = WEEKDAY_NAMES[dow];
@@ -263,7 +264,7 @@ async function buildTeacherTimetable(teacherId: string, session: string) {
 // GET /api/timetable/teacher?teacherId=&session=  (staff — view any teacher)
 export const getTeacherTimetableAdmin = asyncHandler(async (req, res) => {
   const teacherId = String(req.query.teacherId || "").trim();
-  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const session = String(req.query.session || currentSession()).trim();
   if (!asOid(teacherId)) throw new ApiError(400, "A valid teacher is required");
   const teacher = await Teacher.findById(teacherId).select("name email");
   const entries = await buildTeacherTimetable(teacherId, session);
@@ -273,7 +274,7 @@ export const getTeacherTimetableAdmin = asyncHandler(async (req, res) => {
 // GET /api/teacher/timetable  (the logged-in teacher's own schedule)
 export const getMyTeacherTimetable = asyncHandler(async (req, res) => {
   const teacher = await teacherForUser(req);
-  const session = String(req.query.session || CURRENT_SESSION).trim();
+  const session = String(req.query.session || currentSession()).trim();
   const [config, entries] = await Promise.all([
     ensureConfig(),
     buildTeacherTimetable(String(teacher._id), session),

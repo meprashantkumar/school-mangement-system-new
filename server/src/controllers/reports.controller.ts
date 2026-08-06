@@ -1,9 +1,10 @@
 import { asyncHandler } from "../utils/asyncHandler";
+import { currentSession } from "../utils/session";
 import { ApiError } from "../utils/ApiError";
 import { Invoice } from "../models/Invoice";
 import { Payment } from "../models/Payment";
 import { Student } from "../models/Student";
-import { CLASSES, CURRENT_SESSION, prevSession } from "../utils/academics";
+import { CLASSES, prevSession } from "../utils/academics";
 import { runLateFeeSweep } from "../utils/lateFee";
 import { logAudit, AUDIT } from "../utils/audit";
 import { env } from "../config/env";
@@ -116,7 +117,7 @@ export const getAnalytics = asyncHandler(async (req, res) => {
   if (!session) {
     const sessions: string[] = await Student.distinct("session");
     sessions.sort();
-    session = sessions[sessions.length - 1] || CURRENT_SESSION;
+    session = sessions[sessions.length - 1] || currentSession();
   }
 
   const startYear = parseInt(session.split("-")[0], 10) || new Date().getFullYear();

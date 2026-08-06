@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
+import { useSettings } from "@/context/SettingsContext";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Save, CalendarClock } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Exam, ExamPaper, ExamSubject } from "@/types";
-import { CURRENT_SESSION, recentSessions, classLabel } from "@/lib/constants";
+import { recentSessions, classLabel } from "@/lib/constants";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function ExamTimetable() {
-  const [session, setSession] = useState(CURRENT_SESSION);
+  const { currentSession } = useSettings();
+  const [session, setSession] = useState(currentSession);
+  // Settings can land after this page mounts, so follow the running session.
+  useEffect(() => setSession(currentSession), [currentSession]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [examId, setExamId] = useState("");
   const [papers, setPapers] = useState<ExamPaper[]>([]);

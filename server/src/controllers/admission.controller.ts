@@ -1,9 +1,10 @@
 import { asyncHandler } from "../utils/asyncHandler";
+import { currentSession } from "../utils/session";
 import { ApiError } from "../utils/ApiError";
 import { Admission } from "../models/Admission";
 import { Student } from "../models/Student";
 import { User } from "../models/User";
-import { CURRENT_SESSION } from "../utils/academics";
+
 import { logAudit, AUDIT } from "../utils/audit";
 import { moveToTrash } from "./trash.controller";
 
@@ -37,7 +38,7 @@ export const submitAdmission = asyncHandler(async (req, res) => {
     gender: b.gender || "",
     dateOfBirth: b.dateOfBirth ? new Date(b.dateOfBirth) : undefined,
     applyingForClass,
-    session: String(b.session || CURRENT_SESSION).trim(),
+    session: String(b.session || currentSession()).trim(),
     previousSchool: b.previousSchool
       ? String(b.previousSchool).trim()
       : undefined,

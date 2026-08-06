@@ -39,8 +39,20 @@ export const WEEKDAYS = [
 export const weekdayShort = (d: number) => WEEKDAYS.find((w) => w.value === d)?.short || "";
 export const weekdayLong = (d: number) => WEEKDAYS.find((w) => w.value === d)?.long || "";
 
-// The active academic session (keep in sync with the server's utils/academics.ts).
-export const CURRENT_SESSION = "2026-27";
+// Where a school starts if it has never set its session — the year this build was
+// cut (keep in sync with the server's utils/academics.ts).
+export const DEFAULT_SESSION = "2026-27";
+
+// The session the school is ACTUALLY running comes from the server, because it is a
+// setting the office moves on their own promotion day. Inside a component use
+// useSettings().currentSession, which re-renders when it changes. This module-level
+// mirror exists only for the few helpers that run outside React (export filenames,
+// form defaults) — it is filled by SettingsProvider as soon as settings load.
+let cachedSession = DEFAULT_SESSION;
+export const setCachedSession = (session?: string) => {
+  if (session && session.trim()) cachedSession = session.trim();
+};
+export const currentSession = () => cachedSession;
 
 // Non-teaching staff roles (keep in sync with the server's STAFF_CATEGORIES).
 export const STAFF_CATEGORIES = [
@@ -117,6 +129,6 @@ export const prevSession = (session: string): string => {
 
 // A short list of academic sessions (newest first) for filter dropdowns.
 export const recentSessions = (): string[] => {
-  const cur = CURRENT_SESSION;
+  const cur = currentSession();
   return [nextSession(cur), cur, prevSession(cur), prevSession(prevSession(cur))];
 };

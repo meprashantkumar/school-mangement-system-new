@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
-import { CURRENT_SESSION } from "../utils/academics";
+import { currentSession } from "../utils/session";
 
 // A public admission application. Anyone can submit one from the website; staff
 // review it (approve → becomes a real Student, or reject). Kept separate from the
@@ -37,7 +37,7 @@ const admissionSchema = new Schema<IAdmission>(
     gender: { type: String, enum: ["Male", "Female", "Other", ""], default: "" },
     dateOfBirth: { type: Date },
     applyingForClass: { type: String, required: true, trim: true },
-    session: { type: String, default: CURRENT_SESSION, trim: true },
+    session: { type: String, default: () => currentSession(), trim: true },
     previousSchool: { type: String, trim: true },
     category: { type: String, default: "General", trim: true },
     parentName: { type: String, trim: true },

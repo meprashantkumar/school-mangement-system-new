@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useSettings } from "@/context/SettingsContext";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { FeeHead, FeeStructure } from "@/types";
-import { CLASSES, classLabel, CURRENT_SESSION } from "@/lib/constants";
+import { CLASSES, classLabel } from "@/lib/constants";
 import { formatINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,10 @@ export default function BulkFeeSetup({
   feeHeads: FeeHead[];
   onSaved: () => void;
 }) {
-  const [academicYear, setAcademicYear] = useState(CURRENT_SESSION);
+  const { currentSession } = useSettings();
+  const [academicYear, setAcademicYear] = useState(currentSession);
+  // Settings can land after this page mounts, so follow the running session.
+  useEffect(() => setAcademicYear(currentSession), [currentSession]);
   const [grid, setGrid] = useState<Grid>({});
   const [included, setIncluded] = useState<Record<string, boolean>>({});
   const [applyAll, setApplyAll] = useState<Record<string, string>>({});

@@ -28,8 +28,8 @@ import {
   classesUpTo,
   nextClass,
   nextSession,
-  CURRENT_SESSION,
 } from "@/lib/constants";
+import { useSettings } from "@/context/SettingsContext";
 import { formatINR } from "@/lib/utils";
 import { toCSV, parseCSV, downloadFile } from "@/lib/csv";
 import PromoteStudentsDialog from "@/components/PromoteStudentsDialog";
@@ -141,8 +141,8 @@ export default function Students() {
   // the school has just started teaching.
   const [readmitOpen, setReadmitOpen] = useState(false);
   const [readmitting, setReadmitting] = useState(false);
-  const [readmitForm, setReadmitForm] = useState({ class: "", session: CURRENT_SESSION, section: "" });
-  const [highestClass, setHighestClass] = useState("12");
+  const { currentSession, highestClass } = useSettings();
+  const [readmitForm, setReadmitForm] = useState({ class: "", session: currentSession, section: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkService, setBulkService] = useState("Transport");
@@ -195,11 +195,6 @@ export default function Students() {
       .get("/fees/structures")
       .then(({ data }) => setStructures(data.structures || []))
       .catch(() => {});
-    // How far this school goes — a re-admission can't put anyone above it.
-    api
-      .get("/settings")
-      .then(({ data }) => setHighestClass(data.highestClass || "12"))
-      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -207,7 +202,7 @@ export default function Students() {
   const baseFeeFor = (className: string, headName: string): number | null => {
     const forClass = structures.filter((s) => s.class === className);
     const s =
-      forClass.find((x) => x.academicYear === CURRENT_SESSION) || forClass[0];
+      forClass.find((x) => x.academicYear === currentSession) || forClass[0];
     const item = s?.items.find((i) => i.name === headName);
     return item ? item.amount : null;
   };
@@ -392,7 +387,7 @@ export default function Students() {
     const up = base ? nextClass(base.class) : null;
     setReadmitForm({
       class: up && classesUpTo(highestClass).includes(up) ? up : "",
-      session: base ? nextSession(base.session || CURRENT_SESSION) : CURRENT_SESSION,
+      session: base ? nextSession(base.session || currentSession) : currentSession,
       section: base?.section || "",
     });
     setReadmitOpen(true);

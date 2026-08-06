@@ -2,6 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { classLabel, classesUpTo, nextClass, nextClassWithin } from "../utils/academics";
 import { getSchoolSetting } from "../models/SchoolSetting";
+import { currentSession } from "../utils/session";
 import { logAudit, AUDIT } from "../utils/audit";
 import { Student, IStudent } from "../models/Student";
 import { User } from "../models/User";
@@ -245,6 +246,7 @@ export const promoteStudents = asyncHandler(async (req, res) => {
 
   // A school that stops at Class 10 must not send its Class 10 into a Class 11.
   const { highestClass } = await getSchoolSetting();
+  const running = currentSession();
   const promotedClass = nextClassWithin(fromClass, highestClass); // null = they have finished
 
   const filter: Record<string, unknown> = {
@@ -312,6 +314,18 @@ export const promoteStudents = asyncHandler(async (req, res) => {
     ? `${classLabel(fromClass)}${fromSection ? " " + fromSection : ""}: ${parts.join(", ")} for ${toSession}.`
     : `No active students found in ${classLabel(fromClass)}${fromSection ? " " + fromSection : ""} for session ${fromSession}.`;
 
+  // Registers, timetables and a teacher's own classes are all read for the session
+  // the school says it is running. Promoting children into a later one without
+  // moving that leaves their new class invisible — the roster comes back empty and
+  // attendance cannot be marked — so say so rather than let it be discovered on a
+  // Monday morning.
+  const sessionWarning =
+    promoted > 0 && toSession !== running
+      ? `These students are now in ${toSession}, but the school is still running ${running}. ` +
+        `Their class registers and timetables stay hidden until you start ${toSession} ` +
+        `(Students -> Promote Class -> Start new session).`
+      : undefined;
+
   let runId: string | undefined;
   if (students.length) {
     const run = await PromotionRun.create({
@@ -335,6 +349,8 @@ export const promoteStudents = asyncHandler(async (req, res) => {
     passedOut,
     isFinalClass: promotedClass === null,
     highestClass,
+    currentSession: running,
+    sessionWarning,
     matched: students.length,
     runId,
   });

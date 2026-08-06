@@ -6,6 +6,7 @@ import { ensureUserIndexes } from "./utils/ensureUserIndexes";
 import { normalizeStoredPhones } from "./utils/normalizeStoredPhones";
 import { migrateHolidayScope } from "./utils/migrateHolidayScope";
 import { migratePassouts } from "./utils/migratePassouts";
+import { primeCurrentSession } from "./utils/session";
 import { runLateFeeSweep } from "./utils/lateFee";
 
 const start = async () => {
@@ -21,6 +22,10 @@ const start = async () => {
   await migrateHolidayScope();
   // Finishing school is its own status now, not a "left" with a particular wording.
   await migratePassouts();
+  // Which academic session the school is in decides what every roster, register and
+  // timetable shows, and it is read on almost every request — so load it once here
+  // and keep it in memory.
+  await primeCurrentSession();
   await ensureSuperAdmin();
 
   // Apply auto late fees on boot, then re-check periodically while running.

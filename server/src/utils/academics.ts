@@ -1,8 +1,10 @@
 // Academic session + class helpers shared by student promotion logic.
 
-// The default session used for brand-new students and legacy records without one.
-// (Indian academic year runs Apr–Mar, so 2026 belongs to session "2026-27".)
-export const CURRENT_SESSION = "2026-27";
+// Where a school starts if it has never set its session: the year this build was
+// cut. (Indian academic year runs Apr–Mar, so 2026 belongs to session "2026-27".)
+// The session a school is ACTUALLY in is a setting they move on their own promotion
+// day — read it with currentSession() from utils/session, never from here.
+export const DEFAULT_SESSION = "2026-27";
 
 // Ordered ladder of classes. `nextClass` walks one step up this ladder.
 export const CLASSES = [
