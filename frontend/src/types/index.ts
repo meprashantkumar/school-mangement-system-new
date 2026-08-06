@@ -58,6 +58,10 @@ export interface RosterDay {
   class: string;
   section: string;
   date: string;
+  /** The academic session this register belongs to. */
+  session?: string;
+  /** True for a finished year: readable history, never markable. */
+  readOnly?: boolean;
   dayInfo: {
     sunday: boolean;
     holiday: boolean;

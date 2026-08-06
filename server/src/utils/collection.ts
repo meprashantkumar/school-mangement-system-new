@@ -12,9 +12,10 @@ export interface AllocationPlan {
   amount: number;
 }
 
-// Creates a Payment with a fresh receipt number. The receipt number (count+1)
-// isn't atomic, so on the rare collision we retry with a recomputed number. Any
-// OTHER duplicate (e.g. a replayed Razorpay payment id) is rethrown for the caller.
+// Creates a Payment with a fresh receipt number. Reading the highest issued number
+// isn't atomic, so if two counters take money in the same instant one of them loses
+// the race — it retries, reads the number the winner just took, and moves past it.
+// Any OTHER duplicate (e.g. a replayed Razorpay payment id) is rethrown for the caller.
 export async function createPayment(data: Record<string, unknown>) {
   for (let attempt = 0; attempt < 5; attempt++) {
     try {

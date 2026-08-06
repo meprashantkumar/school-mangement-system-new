@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSettings } from "@/context/SettingsContext";
 import { CalendarDays, Plus, Trash2, PalmtreeIcon, GraduationCap, Users } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
@@ -45,7 +46,13 @@ export default function AttendanceView() {
   const [cls, setCls] = useState("");
   const [section, setSection] = useState("");
   const [date, setDate] = useState(todayKey());
+  // Which year's register to read. Defaults to the running session; earlier ones are
+  // history — readable here, never markable.
+  const { currentSession } = useSettings();
+  const [session, setSession] = useState(currentSession);
+  useEffect(() => setSession(currentSession), [currentSession]);
   const [roster, setRoster] = useState<RosterDay | null>(null);
+  const [sessions, setSessions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [tab, setTab] = useState<"students" | "staff">("students");
@@ -89,6 +96,12 @@ export default function AttendanceView() {
 
   useEffect(() => {
     loadHolidays();
+    // The years worth offering are the ones a register was actually kept for — not
+    // the ones students are in now, since promotion empties last year of students.
+    api
+      .get("/teachers/attendance/sessions")
+      .then(({ data }) => setSessions(data.sessions || []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -103,7 +116,7 @@ export default function AttendanceView() {
     let live = true;
     setLoading(true);
     api
-      .get("/teachers/attendance", { params: { class: cls, section, date } })
+      .get("/teachers/attendance", { params: { class: cls, section, date, session } })
       .then(({ data }) => {
         if (live) setRoster(data);
       })
@@ -116,7 +129,7 @@ export default function AttendanceView() {
     return () => {
       live = false;
     };
-  }, [cls, section, date]);
+  }, [cls, section, date, session]);
 
   const addHoliday = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +142,7 @@ export default function AttendanceView() {
       resetScope();
       loadHolidays();
       if (cls && section) {
-        const { data } = await api.get("/teachers/attendance", { params: { class: cls, section, date } });
+        const { data } = await api.get("/teachers/attendance", { params: { class: cls, section, date, session } });
         setRoster(data);
       }
     } catch (err: any) {
@@ -140,7 +153,7 @@ export default function AttendanceView() {
   const refreshRoster = async () => {
     if (!cls || !section) return;
     const { data } = await api.get("/teachers/attendance", {
-      params: { class: cls, section, date },
+      params: { class: cls, section, date, session },
     });
     setRoster(data);
   };
@@ -218,7 +231,7 @@ export default function AttendanceView() {
       // Refresh the roster too, so the amber "Holiday" banner clears if we were
       // viewing that day (adding a holiday already refreshes — keep them in sync).
       if (cls && section) {
-        const { data } = await api.get("/teachers/attendance", { params: { class: cls, section, date } });
+        const { data } = await api.get("/teachers/attendance", { params: { class: cls, section, date, session } });
         setRoster(data);
       }
     } catch (err: any) {
@@ -291,7 +304,30 @@ export default function AttendanceView() {
               <label className="mb-1 block text-sm text-muted-foreground">Date</label>
               <Input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
             </div>
+            <div>
+              <label className="mb-1 block text-sm text-muted-foreground">Session</label>
+              <select
+                className={selectClass}
+                value={session}
+                onChange={(e) => setSession(e.target.value)}
+              >
+                {Array.from(new Set([currentSession, ...sessions])).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                    {s === currentSession ? " (current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {roster?.readOnly && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm text-sky-800">
+              Showing <b>{session}</b> — a finished year. This is the register as it was
+              kept, including children who have since left or passed out, and the
+              percentages for that year only. It cannot be changed.
+            </div>
+          )}
 
           {!cls || !section ? (
             <p className="py-10 text-center text-muted-foreground">

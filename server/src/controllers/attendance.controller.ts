@@ -37,9 +37,14 @@ const holidayScopeFor = (cls: string) => ({ $in: ["", cls] });
 
 // Per-student present/absent tallies for the session up to (and including) a day,
 // excluding Sundays and named holidays. Returns a map by student id.
-const computeRates = async (cls: string, section: string, uptoKey: string) => {
+const computeRates = async (
+  cls: string,
+  section: string,
+  uptoKey: string,
+  session: string = currentSession()
+) => {
   const holidayKeys = (
-    await Holiday.find({ session: currentSession(), class: holidayScopeFor(cls) }).select("dateKey")
+    await Holiday.find({ session, class: holidayScopeFor(cls) }).select("dateKey")
   ).map((h) => h.dateKey);
 
   const rows = await Attendance.aggregate([
@@ -47,7 +52,7 @@ const computeRates = async (cls: string, section: string, uptoKey: string) => {
       $match: {
         class: cls,
         section,
-        session: currentSession(),
+        session,
         dateKey: { $lte: uptoKey, $nin: holidayKeys },
       },
     },
@@ -79,7 +84,17 @@ const byRoll = (a: { rollNo?: string; name: string }, b: { rollNo?: string; name
 // Builds the roster for a class+section on a given day: each active student with
 // that day's status, their running % (green/red is decided on the client), the
 // day's info (holiday/Sunday), and headline counts.
-const buildRoster = async (cls: string, section: string, dateKey: string) => {
+// `session` defaults to the year the school is running. Passing an earlier one is
+// how the office looks back at a finished year (admin only) — see the note on the
+// roster below for why a past year cannot be read from the students collection.
+const buildRoster = async (
+  cls: string,
+  section: string,
+  dateKey: string,
+  session: string = currentSession()
+) => {
+  const past = session !== currentSession();
+
   // "" sorts before any class name, so a whole-school holiday wins the label on a day
   // that happens to have both.
   const holiday = await Holiday.findOne({ dateKey, class: holidayScopeFor(cls) }).sort({ class: 1 });
@@ -95,24 +110,36 @@ const buildRoster = async (cls: string, section: string, dateKey: string) => {
       | null,
   };
 
-  const students = (
-    await Student.find({
-      class: cls,
-      section,
-      session: currentSession(),
-      status: "active",
-    }).select("name admissionNo rollNo class section gender")
-  ).sort(byRoll);
+  // For the running year the roster is simply who is in the class now. For a FINISHED
+  // year it cannot be: a child who sat in 9-A last year has "Class 10" on their record
+  // today, and someone who has since left or passed out would vanish from the register
+  // they were actually on. The only faithful record of who was in that class is the
+  // attendance itself, so a past year is assembled from those rows — which also means
+  // it includes children who have since left.
+  const students = past
+    ? (
+        await Student.find({
+          _id: { $in: await Attendance.distinct("student", { class: cls, section, session }) },
+        }).select("name admissionNo rollNo class section gender")
+      ).sort(byRoll)
+    : (
+        await Student.find({
+          class: cls,
+          section,
+          session,
+          status: "active",
+        }).select("name admissionNo rollNo class section gender")
+      ).sort(byRoll);
 
   const dayRecords = await Attendance.find({
     class: cls,
     section,
-    session: currentSession(),
+    session,
     dateKey,
   }).select("student status");
   const statusById = new Map(dayRecords.map((r) => [String(r.student), r.status]));
 
-  const rates = await computeRates(cls, section, dateKey);
+  const rates = await computeRates(cls, section, dateKey, session);
 
   let present = 0;
   let absent = 0;
@@ -149,6 +176,10 @@ const buildRoster = async (cls: string, section: string, dateKey: string) => {
     class: cls,
     section,
     date: dateKey,
+    session,
+    // A finished year is history: it can be read but never marked, and the screen
+    // needs to know so it doesn't offer buttons that would be refused.
+    readOnly: past,
     dayInfo,
     students: list,
     counts: { present, absent, unmarked: total - present - absent, total, classAvgPct },
@@ -280,10 +311,30 @@ export const markBulk = asyncHandler(async (req, res) => {
 // ---- Admin endpoint (read-only) ----
 
 // GET /api/teachers/attendance?class=&section=&date=
+// GET /api/teachers/attendance/sessions -> years a register was actually kept for.
+// Not the sessions students are in: once a class is promoted nobody is left in last
+// year, so that list would hide exactly the history the office is looking for.
+export const getAttendanceSessions = asyncHandler(async (_req, res) => {
+  const sessions: string[] = await Attendance.distinct("session");
+  const running = currentSession();
+  if (!sessions.includes(running)) sessions.push(running);
+  sessions.sort().reverse();
+  res.json({ sessions, currentSession: running });
+});
+
 export const getRosterAdmin = asyncHandler(async (req, res) => {
   const cls = String(req.query.class || "");
   const section = String(req.query.section || "");
   if (!cls || !section) throw new ApiError(400, "class and section are required");
   const dateKey = toDateKey(req.query.date || todayKey());
-  res.json(await buildRoster(cls, section, dateKey));
+
+  // The office may look back at a finished year — a scholarship form or a parent
+  // asking about last year needs the register that was actually kept. Teachers get
+  // no such option: their assignments are per session, so last year's class is not
+  // theirs to read.
+  const asked = String(req.query.session || "").trim();
+  if (asked && !/^\d{4}-\d{2}$/.test(asked)) {
+    throw new ApiError(400, 'A session looks like "2026-27"');
+  }
+  res.json(await buildRoster(cls, section, dateKey, asked || currentSession()));
 });
