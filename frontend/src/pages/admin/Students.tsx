@@ -133,6 +133,9 @@ export default function Students() {
   const [leaveForm, setLeaveForm] = useState({ date: today(), reason: "" });
   const [importing, setImporting] = useState(false);
   const [importErrors, setImportErrors] = useState<string[]>([]);
+  // Rows that DID import but carried something the office should look at — a fee
+  // amount that could not be read, for instance. These used to be dropped in silence.
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
   // A picked file whose students are already on file — waiting on skip-or-refresh.
   const [pendingImport, setPendingImport] = useState<
     { rows: any[]; already: number; name: string } | null
@@ -408,6 +411,9 @@ export default function Students() {
       });
       toast.success(data.message);
       (data.skipped || []).forEach((m: string) => toast.error(m));
+      // Re-admitting into a year the school has not started hides their register just
+      // as promoting into it does, so it is said just as plainly.
+      if (data.sessionWarning) toast.error(data.sessionWarning, { duration: 12000 });
       setReadmitOpen(false);
       clearSelection();
       await fetchStudents();
@@ -458,10 +464,12 @@ export default function Students() {
   const runImport = async (rows: any[], updateExisting: boolean) => {
     setImporting(true);
     setImportErrors([]);
+    setImportWarnings([]);
     try {
       const { data } = await api.post("/students/import", { students: rows, updateExisting });
       toast.success(data.message);
       setImportErrors(data.errors || []);
+      setImportWarnings(data.warnings || []);
       await fetchStudents();
       loadSessions();
     } catch (err: any) {
@@ -637,6 +645,32 @@ export default function Students() {
           </ul>
           <p className="mt-2 text-xs text-rose-600/80">
             Fix these rows in your file and import again — the ones that succeeded are already saved.
+          </p>
+        </div>
+      )}
+
+      {importWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-sm font-semibold text-amber-800">
+              {importWarnings.length} thing(s) to check — these students were imported
+            </p>
+            <button
+              onClick={() => setImportWarnings([])}
+              className="text-xs text-amber-700 hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+          <ul className="max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-sm text-amber-800">
+            {importWarnings.slice(0, 50).map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+            {importWarnings.length > 50 && <li>…and {importWarnings.length - 50} more</li>}
+          </ul>
+          <p className="mt-2 text-xs text-amber-700/80">
+            The students are saved. Only what is listed here was left unset — correct it on the
+            student, or fix the file and import again with "update existing" ticked.
           </p>
         </div>
       )}

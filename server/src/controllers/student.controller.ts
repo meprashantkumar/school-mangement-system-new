@@ -1,6 +1,13 @@
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
-import { classLabel, classesUpTo, nextClass, nextClassWithin } from "../utils/academics";
+import {
+  classLabel,
+  classesUpTo,
+  nextClass,
+  nextClassWithin,
+  normalizeClass,
+  normalizeSession,
+} from "../utils/academics";
 import { getSchoolSetting } from "../models/SchoolSetting";
 import { currentSession } from "../utils/session";
 import { logAudit, AUDIT } from "../utils/audit";
@@ -168,10 +175,18 @@ export const rejoinStudent = asyncHandler(async (req, res) => {
 // in their history, the admission number stays theirs, and their fee ledger follows
 // them, so a re-admitted child is the same person on paper as before.
 export const readmitStudents = asyncHandler(async (req, res) => {
-  const { ids, session, section } = req.body;
+  const { ids, section } = req.body;
   const cls = req.body.class;
   if (!Array.isArray(ids) || ids.length === 0) throw new ApiError(400, "Select at least one student");
-  if (!cls || !session) throw new ApiError(400, "A class and a session are required");
+  if (!cls || !req.body.session) throw new ApiError(400, "A class and a session are required");
+
+  // A re-admission into something that is not a session leaves the child on no
+  // register, in no fee run and on no report — the same trap the settings screen and
+  // the import both guard, so it is guarded here too.
+  const session = normalizeSession(req.body.session);
+  if (!session) {
+    throw new ApiError(400, 'A session looks like "2027-28" — four digits, then the next year.');
+  }
 
   const { highestClass } = await getSchoolSetting();
   if (!classesUpTo(highestClass).includes(String(cls))) {
@@ -211,12 +226,23 @@ export const readmitStudents = asyncHandler(async (req, res) => {
     );
   }
 
+  // Same hidden-register trap as promotion: a child re-admitted into a year the school
+  // has not started sits in a class no register will show until it does.
+  const running = currentSession();
+  const sessionWarning =
+    readmitted > 0 && session !== running
+      ? `These students are now in ${session}, but the school is still running ${running}. ` +
+        `Their class registers and timetables stay hidden until you start ${session} ` +
+        `(Students -> Promote Class -> Start new session).`
+      : undefined;
+
   res.json({
     message: `Re-admitted ${readmitted} student(s) into ${classLabel(String(cls))} (${session})${
       skipped.length ? `, ${skipped.length} skipped` : ""
     }.`,
     readmitted,
     skipped,
+    sessionWarning,
   });
 });
 
@@ -319,8 +345,11 @@ export const promoteStudents = asyncHandler(async (req, res) => {
   // moving that leaves their new class invisible — the roster comes back empty and
   // attendance cannot be marked — so say so rather than let it be discovered on a
   // Monday morning.
+  // A retained child moves into the new session too — they simply keep their class —
+  // so their register is just as hidden. Keying this on promotions alone meant a class
+  // where everybody repeated the year slipped into the new session in total silence.
   const sessionWarning =
-    promoted > 0 && toSession !== running
+    promoted + retained > 0 && toSession !== running
       ? `These students are now in ${toSession}, but the school is still running ${running}. ` +
         `Their class registers and timetables stay hidden until you start ${toSession} ` +
         `(Students -> Promote Class -> Start new session).`
@@ -368,6 +397,27 @@ export const undoPromotion = asyncHandler(async (req, res) => {
   if (!run) throw new ApiError(404, "Promotion run not found");
   if (run.undone) throw new ApiError(400, "This promotion has already been undone");
 
+  // Undoing puts children back exactly where they were — which is a problem if the
+  // school has LOWERED its last class since. A school that passed Class 10 out and
+  // then became a middle school would get three active Class 10 students back, and
+  // nothing could promote or pass them out again. Say so instead, and name the way
+  // out: the undo still works the moment the setting is put back.
+  const { highestClass } = await getSchoolSetting();
+  const allowed = classesUpTo(highestClass);
+  const stranded = [...new Set(run.entries.map((e) => e.prevClass))].filter(
+    (c) => !allowed.includes(c)
+  );
+  if (stranded.length) {
+    throw new ApiError(
+      400,
+      `This promotion would put students back into ${stranded
+        .map(classLabel)
+        .join(", ")}, which is above ${classLabel(
+        highestClass
+      )} — the last class this school now teaches. Raise that setting first, then undo.`
+    );
+  }
+
   let reverted = 0;
   for (const e of run.entries) {
     const s = await Student.findById(e.student);
@@ -412,14 +462,34 @@ const inPool = async <T>(items: T[], size: number, job: (item: T, index: number)
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
 };
 
+// A money amount as a person writes it: "1,200", "₹900", "Rs. 450", " 700 ". Returns
+// null when it is not a number at all, so the caller can SAY so rather than store
+// nothing and leave the office to discover a missing bus fare months later.
+const parseAmount = (value: unknown): number | null => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const cleaned = String(value ?? "")
+    .trim()
+    .replace(/^(rs\.?|inr)\s*/i, "")
+    .replace(/[₹\s]/g, "")
+    .replace(/,/g, "");
+  if (!cleaned || !/^\d+(\.\d+)?$/.test(cleaned)) return null;
+  return Number(cleaned);
+};
+
 // Turns one imported row into the fields to store. `create` is the whole student;
 // `update` holds only what the file actually supplied, so refreshing an existing
 // record fills in and corrects things without blanking out anything the file is
 // silent about (a CSV without a mother's-name column must not erase it).
-const shapeImportRow = (row: any) => {
+//
+// `fatal` is a reason the row cannot be stored at all; `problems` are things worth
+// telling the office about that do not stop the child being imported. Silence was the
+// old failure: an unreadable fee simply vanished.
+const shapeImportRow = (row: any, school: { highestClass: string; allowed: string[] }) => {
   const genders = ["Male", "Female", "Other"];
   const statuses = ["active", "left", "passed", "inactive"];
   const given = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== "";
+  const problems: string[] = [];
+  let fatal: string | null = null;
 
   const create: Record<string, unknown> = {};
   const update: Record<string, unknown> = {};
@@ -430,14 +500,43 @@ const shapeImportRow = (row: any) => {
 
   both("admissionNo", String(row.admissionNo).trim());
   both("name", String(row.name).trim());
-  both("class", String(row.class).trim());
+
+  // The class has to be one this school actually teaches, stored under the one name
+  // the rest of the app uses. A file saying "Class 5" used to create a class called
+  // "Class 5" that matched no fee structure and no register; a file saying "12" in a
+  // school that stops at Class 10 used to leave a child nothing could ever promote,
+  // and blocked the school from saving its own settings afterwards.
+  const cls = normalizeClass(row.class);
+  if (!cls) {
+    fatal = `"${String(row.class).trim()}" is not a class this school has`;
+  } else if (!school.allowed.includes(cls)) {
+    fatal = `${classLabel(cls)} is beyond ${classLabel(
+      school.highestClass
+    )}, the last class this school teaches`;
+  } else {
+    both("class", cls);
+  }
 
   for (const key of [
-    "section", "rollNo", "session", "category", "parentName", "motherName",
+    "section", "rollNo", "category", "parentName", "motherName",
     "parentPhone", "parentEmail", "address",
   ]) {
     if (given(row[key])) both(key, String(row[key]).trim());
     else create[key] = undefined;
+  }
+
+  // Likewise the session: written the app's one way, or not at all. A file is allowed
+  // to leave it out — the child then joins the year the school is running, which is
+  // what a fresh import wants.
+  if (given(row.session)) {
+    const session = normalizeSession(row.session);
+    if (!session) {
+      fatal = fatal || `"${String(row.session).trim()}" is not a session (it looks like "2026-27")`;
+    } else {
+      both("session", session);
+    }
+  } else {
+    create.session = undefined;
   }
 
   create.gender = "";
@@ -471,22 +570,43 @@ const shapeImportRow = (row: any) => {
   const rawFees: { name: string; amount: unknown }[] = Array.isArray(row.serviceFees)
     ? row.serviceFees.map((f: any) => ({ name: String(f?.name || "").trim(), amount: f?.amount }))
     : typeof row.serviceFees === "string" && row.serviceFees.trim()
-    ? row.serviceFees
+    ? // A comma between two digits is a thousands separator, not a gap between two
+      // services: "Transport:1,200" is one fee of ₹1,200, while
+      // "Transport:900,Meal:300" is two fees. Splitting on every comma tore the first
+      // one in half and stored a ₹1,200 bus fare as ₹1, with nothing reported.
+      row.serviceFees
+        .replace(/(\d),(\d)/g, "$1$2")
         .split(/[;,]/)
         .map((part: string) => {
           const at = part.lastIndexOf(":");
           return at < 0
-            ? { name: part.trim(), amount: NaN }
+            ? { name: part.trim(), amount: null }
             : { name: part.slice(0, at).trim(), amount: part.slice(at + 1).trim() };
         })
+        .filter((f: { name: string }) => f.name)
     : [];
-  const serviceFees = rawFees
-    .map((f) => ({ name: f.name, amount: Number(f.amount) }))
-    .filter((f) => f.name && Number.isFinite(f.amount) && f.amount >= 0 && opted.includes(f.name));
+
+  const serviceFees: { name: string; amount: number }[] = [];
+  for (const f of rawFees) {
+    const amount = parseAmount(f.amount);
+    if (amount === null) {
+      problems.push(`the fee for "${f.name}" could not be read from "${String(f.amount ?? "")}"`);
+      continue;
+    }
+    if (amount < 0) {
+      problems.push(`the fee for "${f.name}" is a negative amount`);
+      continue;
+    }
+    if (!opted.includes(f.name)) {
+      problems.push(`a fee was given for "${f.name}" but this student has not opted into it`);
+      continue;
+    }
+    serviceFees.push({ name: f.name, amount });
+  }
   create.serviceFees = serviceFees;
   if (rawFees.length) update.serviceFees = serviceFees;
 
-  return { create, update };
+  return { create, update, problems, fatal };
 };
 
 // POST /api/students/import-preview  { admissionNos: [...] }
@@ -523,6 +643,16 @@ export const importStudents = asyncHandler(async (req, res) => {
   const failures: { row: number; message: string }[] = [];
   const fail = (i: number, admissionNo: string, message: string) =>
     failures.push({ row: i + 1, message: `Row ${i + 1}${admissionNo ? ` (${admissionNo})` : ""}: ${message}` });
+  // Things worth saying out loud that do not stop a child being imported. Without
+  // these the office had no way to know a fee had been misread.
+  const cautions: { row: number; message: string }[] = [];
+  const caution = (i: number, admissionNo: string, message: string) =>
+    cautions.push({ row: i + 1, message: `Row ${i + 1}${admissionNo ? ` (${admissionNo})` : ""}: ${message}` });
+
+  // A row may only name a class this school teaches, so an import cannot leave a child
+  // where nothing can ever promote them.
+  const { highestClass } = await getSchoolSetting();
+  const school = { highestClass, allowed: classesUpTo(highestClass) };
 
   // ---- 1. check every row up front, without touching the database -----------
   const usable: { index: number; admissionNo: string; shaped: ReturnType<typeof shapeImportRow> }[] = [];
@@ -540,7 +670,13 @@ export const importStudents = asyncHandler(async (req, res) => {
       continue;
     }
     seen.add(admissionNo);
-    usable.push({ index: i, admissionNo, shaped: shapeImportRow(row) });
+    const shaped = shapeImportRow(row, school);
+    if (shaped.fatal) {
+      fail(i, admissionNo, shaped.fatal);
+      continue;
+    }
+    shaped.problems.forEach((p) => caution(i, admissionNo, p));
+    usable.push({ index: i, admissionNo, shaped });
   }
 
   // ---- 2. one query to find out which of them are already on file -----------
@@ -576,6 +712,8 @@ export const importStudents = asyncHandler(async (req, res) => {
 
   failures.sort((a, b) => a.row - b.row);
   const errors = failures.map((f) => f.message);
+  cautions.sort((a, b) => a.row - b.row);
+  const warnings = cautions.map((c) => c.message);
 
   if (inserted || updated) {
     logAudit(
@@ -589,6 +727,7 @@ export const importStudents = asyncHandler(async (req, res) => {
   if (updateExisting) parts.push(`updated ${updated} existing`);
   else parts.push(`skipped ${skipped} existing`);
   if (errors.length) parts.push(`${errors.length} error(s)`);
+  if (warnings.length) parts.push(`${warnings.length} to check`);
 
   res.json({
     message: `${parts.join(", ")}.`,
@@ -596,6 +735,7 @@ export const importStudents = asyncHandler(async (req, res) => {
     updated,
     skipped,
     errors,
+    warnings,
   });
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { useSettings } from "@/context/SettingsContext";
 import { CalendarDays, Plus, Trash2, PalmtreeIcon, GraduationCap, Users } from "lucide-react";
 import toast from "react-hot-toast";
@@ -49,6 +50,8 @@ export default function AttendanceView() {
   // Which year's register to read. Defaults to the running session; earlier ones are
   // history — readable here, never markable.
   const { currentSession } = useSettings();
+  const { user } = useAuth();
+  const canReadHistory = user?.role === "superadmin";
   const [session, setSession] = useState(currentSession);
   useEffect(() => setSession(currentSession), [currentSession]);
   const [roster, setRoster] = useState<RosterDay | null>(null);
@@ -96,13 +99,16 @@ export default function AttendanceView() {
 
   useEffect(() => {
     loadHolidays();
-    // The years worth offering are the ones a register was actually kept for — not
-    // the ones students are in now, since promotion empties last year of students.
+    // Looking back at a finished year is the super admin's; the office keeps the
+    // current-year view it has always had. The years worth offering are the ones a
+    // register was actually kept for — not the ones students are in now, since
+    // promotion empties last year of students.
+    if (!canReadHistory) return;
     api
       .get("/teachers/attendance/sessions")
       .then(({ data }) => setSessions(data.sessions || []))
       .catch(() => {});
-  }, []);
+  }, [canReadHistory]);
 
   useEffect(() => {
     if (!cls || !section) {
@@ -304,21 +310,23 @@ export default function AttendanceView() {
               <label className="mb-1 block text-sm text-muted-foreground">Date</label>
               <Input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
             </div>
-            <div>
-              <label className="mb-1 block text-sm text-muted-foreground">Session</label>
-              <select
-                className={selectClass}
-                value={session}
-                onChange={(e) => setSession(e.target.value)}
-              >
-                {Array.from(new Set([currentSession, ...sessions])).map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                    {s === currentSession ? " (current)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {canReadHistory && (
+              <div>
+                <label className="mb-1 block text-sm text-muted-foreground">Session</label>
+                <select
+                  className={selectClass}
+                  value={session}
+                  onChange={(e) => setSession(e.target.value)}
+                >
+                  {Array.from(new Set([currentSession, ...sessions])).map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                      {s === currentSession ? " (current)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {roster?.readOnly && (

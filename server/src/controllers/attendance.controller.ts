@@ -8,6 +8,7 @@ import { Student } from "../models/Student";
 import { ITeacher } from "../models/Teacher";
 
 import { toDateKey, dateFromKey, isSundayKey } from "../utils/attendance";
+import { normalizeSession, sessionForDate } from "../utils/academics";
 import { teacherForUser } from "../utils/teacherForUser";
 import { logAudit, AUDIT } from "../utils/audit";
 import { Request } from "express";
@@ -23,6 +24,28 @@ const assertAssigned = (teacher: ITeacher, cls: string, section: string) => {
   if (!isAssigned(teacher, cls, section)) {
     throw new ApiError(403, `You are not the class-teacher of ${cls}-${section}`);
   }
+};
+
+// A register belongs to the academic year its date falls in, but attendance is stamped
+// with the year the school is RUNNING. Marking a day from a year already FINISHED
+// therefore files it under the current one: it counts towards this year's percentage
+// and shows on no correct register. A teacher who types the wrong year in the date box
+// has no way of noticing, so refuse it and say why.
+//
+// A date in a year still to come is deliberately left alone. It cannot do the same
+// damage — a percentage only counts days up to the one being viewed — and refusing it
+// would stop a school marking attendance in April, before the office has got round to
+// starting the new session. Blocking a teacher on the first morning of term to prevent
+// a stray record is the wrong trade.
+const assertNotFinishedSession = (dateKey: string) => {
+  const belongs = sessionForDate(dateKey);
+  const running = currentSession();
+  if (!belongs || belongs >= running) return;
+  throw new ApiError(
+    400,
+    `That day belongs to ${belongs} and the school is running ${running}. ` +
+      `A finished year's register cannot be changed.`
+  );
 };
 
 const roundPct = (present: number, absent: number): number | null => {
@@ -220,6 +243,7 @@ export const markOne = asyncHandler(async (req, res) => {
   if (!student) throw new ApiError(404, "Student not found");
   assertAssigned(teacher, student.class, student.section || "");
 
+  assertNotFinishedSession(dateKey);
   if (isSundayKey(dateKey)) throw new ApiError(400, "That day is a Sunday (weekly off)");
   if (await Holiday.exists({ dateKey, class: holidayScopeFor(student.class) })) {
     throw new ApiError(400, "That day is a holiday");
@@ -264,6 +288,7 @@ export const markBulk = asyncHandler(async (req, res) => {
   }
   assertAssigned(teacher, cls, section);
   const dateKey = toDateKey(date);
+  assertNotFinishedSession(dateKey);
   if (isSundayKey(dateKey)) throw new ApiError(400, "That day is a Sunday (weekly off)");
   if (await Holiday.exists({ dateKey, class: holidayScopeFor(cls) })) {
     throw new ApiError(400, "That day is a holiday");
@@ -328,13 +353,19 @@ export const getRosterAdmin = asyncHandler(async (req, res) => {
   if (!cls || !section) throw new ApiError(400, "class and section are required");
   const dateKey = toDateKey(req.query.date || todayKey());
 
-  // The office may look back at a finished year — a scholarship form or a parent
-  // asking about last year needs the register that was actually kept. Teachers get
-  // no such option: their assignments are per session, so last year's class is not
-  // theirs to read.
-  const asked = String(req.query.session || "").trim();
-  if (asked && !/^\d{4}-\d{2}$/.test(asked)) {
-    throw new ApiError(400, 'A session looks like "2026-27"');
+  // A finished year — a scholarship form, or a parent asking about last year — needs
+  // the register that was actually kept. This is the super admin's to read: teachers
+  // are out because their assignments are per session, and the office keeps the
+  // current-year view it has always had, unchanged.
+  const raw = String(req.query.session || "").trim();
+  let asked = currentSession();
+  if (raw) {
+    const session = normalizeSession(raw);
+    if (!session) throw new ApiError(400, 'A session looks like "2026-27"');
+    if (session !== currentSession() && req.user?.role !== "superadmin") {
+      throw new ApiError(403, "Only the super admin can open a finished year's register");
+    }
+    asked = session;
   }
-  res.json(await buildRoster(cls, section, dateKey, asked || currentSession()));
+  res.json(await buildRoster(cls, section, dateKey, asked));
 });

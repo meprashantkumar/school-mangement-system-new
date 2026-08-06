@@ -2,7 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { logAudit, AUDIT } from "../utils/audit";
 import { getSchoolSetting } from "../models/SchoolSetting";
-import { CLASSES, classLabel, classesUpTo, nextSession } from "../utils/academics";
+import { CLASSES, classLabel, classesUpTo, nextSession, normalizeSession } from "../utils/academics";
 import { currentSession, setCachedSession } from "../utils/session";
 import { Student } from "../models/Student";
 import { Teacher } from "../models/Teacher";
@@ -12,7 +12,7 @@ import { Admission } from "../models/Admission";
 import { Exam } from "../models/Exam";
 import { ClassTimetable } from "../models/ClassTimetable";
 
-const SESSION_FORM = /^\d{4}-\d{2}$/;
+const SESSION_HINT = 'A session looks like "2027-28" — four digits, then the next year.';
 
 // What still has to be done before a session is ready to run. The office sees this
 // both before switching (so they know what is coming) and after (as a to-do list),
@@ -44,8 +44,8 @@ export const getSettings = asyncHandler(async (_req, res) => {
 // GET /api/settings/session-readiness?session=2027-28
 // A dry run: what would the school find if it moved to this session right now?
 export const getSessionReadiness = asyncHandler(async (req, res) => {
-  const session = String(req.query.session || "").trim();
-  if (!SESSION_FORM.test(session)) throw new ApiError(400, 'A session looks like "2027-28"');
+  const session = normalizeSession(req.query.session);
+  if (!session) throw new ApiError(400, SESSION_HINT);
   res.json({ readiness: await readinessFor(session), currentSession: currentSession() });
 });
 
@@ -152,8 +152,8 @@ export const updateSettings = asyncHandler(async (req, res) => {
   }
 
   if (req.body.currentSession !== undefined) {
-    const session = String(req.body.currentSession).trim();
-    if (!SESSION_FORM.test(session)) throw new ApiError(400, 'A session looks like "2027-28"');
+    const session = normalizeSession(req.body.currentSession);
+    if (!session) throw new ApiError(400, SESSION_HINT);
     if (setting.currentSession !== session) {
       changes.push(`session ${setting.currentSession} -> ${session}`);
       // Remember where we came from so the change can be put back with one click.

@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
 import { DEFAULT_SESSION } from "../utils/academics";
+import { setCachedSession } from "../utils/session";
 
 // School-wide academic settings — a single document, like the timetable's bell
 // schedule. Kept in the database rather than the env file so a school can change
@@ -45,6 +46,16 @@ export const SchoolSetting = mongoose.model<ISchoolSetting>("SchoolSetting", sch
 // behaves exactly as it did before (up to Class 12).
 export const getSchoolSetting = async (): Promise<ISchoolSetting> => {
   const existing = await SchoolSetting.findOne();
-  if (existing) return existing;
+  if (existing) {
+    // Keep the running session held in memory in step with what is actually stored.
+    // Normally they cannot drift, because every change writes both. They CAN drift if
+    // the document changes behind the app's back — restoring a backup while the server
+    // is up, or an edit made straight to the database — and then the settings screen
+    // shows one year while new admissions are filed under another. Reconciling here
+    // means the next settings read, promotion or save quietly puts it right, instead of
+    // the mismatch surviving until somebody restarts.
+    setCachedSession(existing.currentSession);
+    return existing;
+  }
   return SchoolSetting.create({});
 };

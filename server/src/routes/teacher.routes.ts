@@ -13,7 +13,8 @@ const router = Router();
 
 // Read-only attendance view for staff. Declared before "/:id" style routes.
 // The literal path first, so it is not read as a class/section query.
-router.get("/attendance/sessions", protect, authorize("superadmin", "admin"), getAttendanceSessions);
+// Only the super admin looks back at earlier years, so only they need the list of them.
+router.get("/attendance/sessions", protect, authorize("superadmin"), getAttendanceSessions);
 router.get("/attendance", protect, authorize("superadmin", "admin"), getRosterAdmin);
 
 // Listing: any staff. Managing: super admin only.

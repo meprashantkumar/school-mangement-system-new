@@ -59,6 +59,49 @@ export const isFinalClass = (cls: string, highestClass: string): boolean => {
   return ladder.length > 0 && ladder[ladder.length - 1] === cls;
 };
 
+// A session, written the one way the whole app stores it. Accepts what a school's own
+// spreadsheet or another system's backup is likely to say — "2026-2027", "2026/27",
+// stray spaces — and returns "2026-27", or null if it is not a session at all.
+// Getting this wrong is invisible and expensive: a student stamped "2025-2026"
+// appears in the student list but on no register and in no fee run, because both are
+// keyed on the session.
+export const normalizeSession = (value: unknown): string | null => {
+  const raw = String(value ?? "").trim().replace(/\s+/g, "");
+  const shape = /^(\d{4})[-/](\d{2}|\d{4})$/.exec(raw);
+  if (!shape) return null;
+  const start = Number(shape[1]);
+  const endsIn = shape[2].length === 4 ? Number(shape[2]) : null;
+  // The second half must be the year after the first — "2026-72" is a typo, not a
+  // session, and "2026-2027" is the same year written long.
+  if (endsIn !== null && endsIn !== start + 1) return null;
+  if (endsIn === null && Number(shape[2]) !== (start + 1) % 100) return null;
+  return `${start}-${String((start + 1) % 100).padStart(2, "0")}`;
+};
+
+// The one canonical class name for whatever a file calls it: "class 5", "CLASS 5",
+// "5th", " 5 ", "NURSERY", "lkg". Returns null when it is not a class at all.
+// A file that said "Class 5" used to create a class literally named "Class 5", which
+// then matched no fee structure, no register and no timetable.
+export const normalizeClass = (value: unknown): string | null => {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/^class\s*/i, "")
+    .replace(/^(\d+)(st|nd|rd|th)$/i, "$1")
+    .trim();
+  if (!raw) return null;
+  return CLASSES.find((c) => c.toLowerCase() === raw.toLowerCase()) ?? null;
+};
+
+// The academic year a calendar date belongs to. The Indian school year runs April to
+// March, so 10 Aug 2026 and 15 Feb 2027 are both "2026-27".
+export const sessionForDate = (dateKey: string): string | null => {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(dateKey || ""));
+  if (!m) return null;
+  const year = Number(m[1]);
+  const start = Number(m[2]) >= 4 ? year : year - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, "0")}`;
+};
+
 // "2025-26" -> "2026-27". Falls back gracefully if the format is unexpected.
 export const nextSession = (session: string): string => {
   const start = parseInt(session.split("-")[0], 10);
