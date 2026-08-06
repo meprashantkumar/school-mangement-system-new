@@ -5,6 +5,7 @@ import { ensureSuperAdmin } from "./config/seedSuperAdmin";
 import { ensureUserIndexes } from "./utils/ensureUserIndexes";
 import { normalizeStoredPhones } from "./utils/normalizeStoredPhones";
 import { migrateHolidayScope } from "./utils/migrateHolidayScope";
+import { migratePassouts } from "./utils/migratePassouts";
 import { runLateFeeSweep } from "./utils/lateFee";
 
 const start = async () => {
@@ -18,6 +19,8 @@ const start = async () => {
   // Existing holidays predate the whole-school/per-class scope — give them one, and
   // replace the dateKey-only unique index that would now reject a class holiday.
   await migrateHolidayScope();
+  // Finishing school is its own status now, not a "left" with a particular wording.
+  await migratePassouts();
   await ensureSuperAdmin();
 
   // Apply auto late fees on boot, then re-check periodically while running.

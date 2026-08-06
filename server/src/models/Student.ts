@@ -39,9 +39,13 @@ export interface IStudent extends Document {
   serviceFees: IServiceFee[]; // per-student amount overrides for opted services
   creditBalance: number; // advance / overpayment held for the student, applied to future dues
   enrollmentHistory: IEnrollment[]; // prior (session, class, section) snapshots
-  status: "active" | "left" | "inactive";
-  exitDate?: Date; // when the student left school (optional)
-  exitReason?: string; // why they left (optional)
+  // "passed" is a student who cleared the school's highest class — they have
+  // finished, which is not the same as leaving mid-way. Kept apart from "left" so
+  // the office can list a year's passouts, issue their certificates, and re-admit
+  // any who continue into a higher class the school adds later.
+  status: "active" | "left" | "passed" | "inactive";
+  exitDate?: Date; // when the student left or passed out (optional)
+  exitReason?: string; // why they left / which class they passed out of (optional)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,7 +89,7 @@ const studentSchema = new Schema<IStudent>(
     serviceFees: { type: [serviceFeeSchema], default: [] },
     creditBalance: { type: Number, default: 0, min: 0 },
     enrollmentHistory: { type: [enrollmentSchema], default: [] },
-    status: { type: String, enum: ["active", "left", "inactive"], default: "active" },
+    status: { type: String, enum: ["active", "left", "passed", "inactive"], default: "active" },
     exitDate: { type: Date },
     exitReason: { type: String, trim: true },
   },

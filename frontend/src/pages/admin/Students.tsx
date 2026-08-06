@@ -21,7 +21,15 @@ import {
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { FeeHead, FeeStructure, Student } from "@/types";
-import { CLASSES, SECTIONS, classLabel, CURRENT_SESSION } from "@/lib/constants";
+import {
+  CLASSES,
+  SECTIONS,
+  classLabel,
+  classesUpTo,
+  nextClass,
+  nextSession,
+  CURRENT_SESSION,
+} from "@/lib/constants";
 import { formatINR } from "@/lib/utils";
 import { toCSV, parseCSV, downloadFile } from "@/lib/csv";
 import PromoteStudentsDialog from "@/components/PromoteStudentsDialog";
@@ -129,6 +137,12 @@ export default function Students() {
   const [pendingImport, setPendingImport] = useState<
     { rows: any[]; already: number; name: string } | null
   >(null);
+  // Bringing finished students back in — e.g. last year's Class 10 into a Class 11
+  // the school has just started teaching.
+  const [readmitOpen, setReadmitOpen] = useState(false);
+  const [readmitting, setReadmitting] = useState(false);
+  const [readmitForm, setReadmitForm] = useState({ class: "", session: CURRENT_SESSION, section: "" });
+  const [highestClass, setHighestClass] = useState("12");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkService, setBulkService] = useState("Transport");
@@ -180,6 +194,11 @@ export default function Students() {
     api
       .get("/fees/structures")
       .then(({ data }) => setStructures(data.structures || []))
+      .catch(() => {});
+    // How far this school goes — a re-admission can't put anyone above it.
+    api
+      .get("/settings")
+      .then(({ data }) => setHighestClass(data.highestClass || "12"))
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -354,6 +373,54 @@ export default function Students() {
       await fetchStudents();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed");
+    }
+  };
+
+  // Students on this page who have finished or left — the ones a re-admission
+  // applies to. Selection is per page, so this counts what is actually visible.
+  const finishedIds = students.filter((s) => s.status !== "active").map((s) => s._id);
+  const selectedFinished = finishedIds.filter((id) => selectedIds.has(id)).length;
+
+  const openReadmit = (s?: Student) => {
+    if (s) {
+      clearSelection();
+      toggleSelect(s._id);
+    }
+    // Default to the class after the one they finished, which is the usual case:
+    // last year's Class 10 going into the Class 11 the school has just opened.
+    const base = s || students.find((x) => selectedIds.has(x._id) && x.status !== "active");
+    const up = base ? nextClass(base.class) : null;
+    setReadmitForm({
+      class: up && classesUpTo(highestClass).includes(up) ? up : "",
+      session: base ? nextSession(base.session || CURRENT_SESSION) : CURRENT_SESSION,
+      section: base?.section || "",
+    });
+    setReadmitOpen(true);
+  };
+
+  const submitReadmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ids = finishedIds.filter((id) => selectedIds.has(id));
+    if (ids.length === 0) return toast.error("Select at least one finished student");
+    if (!readmitForm.class) return toast.error("Choose the class they are joining");
+    setReadmitting(true);
+    try {
+      const { data } = await api.post("/students/readmit", {
+        ids,
+        class: readmitForm.class,
+        session: readmitForm.session,
+        section: readmitForm.section || undefined,
+      });
+      toast.success(data.message);
+      (data.skipped || []).forEach((m: string) => toast.error(m));
+      setReadmitOpen(false);
+      clearSelection();
+      await fetchStudents();
+      loadSessions();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Re-admission failed");
+    } finally {
+      setReadmitting(false);
     }
   };
 
@@ -550,6 +617,7 @@ export default function Students() {
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="left">Left</option>
+          <option value="passed">Passed out</option>
         </select>
       </div>
 
@@ -600,6 +668,14 @@ export default function Students() {
           <Button size="sm" variant="outline" onClick={() => bulkServices("remove")}>
             Remove
           </Button>
+          {selectedFinished > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">·</span>
+              <Button size="sm" variant="outline" onClick={() => openReadmit()}>
+                <RotateCcw className="h-3.5 w-3.5" /> Re-admit {selectedFinished}
+              </Button>
+            </>
+          )}
           <Button size="sm" variant="ghost" onClick={clearSelection}>
             Clear
           </Button>
@@ -640,7 +716,7 @@ export default function Students() {
               </TableRow>
             ) : (
               students.map((s) => (
-                <TableRow key={s._id} className={s.status === "left" ? "opacity-60" : ""}>
+                <TableRow key={s._id} className={s.status !== "active" ? "opacity-60" : ""}>
                   <TableCell>
                     <input
                       type="checkbox"
@@ -661,8 +737,8 @@ export default function Students() {
                     <div className="text-xs text-muted-foreground">{s.parentPhone || ""}</div>
                   </TableCell>
                   <TableCell>
-                    <Badge status={s.status} />
-                    {s.status === "left" && s.exitDate && (
+                    <Badge status={s.status}>{s.status === "passed" ? "Passed out" : undefined}</Badge>
+                    {s.status !== "active" && s.exitDate && (
                       <div
                         className="mt-1 text-xs text-muted-foreground"
                         title={s.exitReason || ""}
@@ -705,24 +781,39 @@ export default function Students() {
                     >
                       <KeyRound className="h-4 w-4" />
                     </Button>
-                    {s.status === "left" ? (
+                    {s.status === "left" || s.status === "passed" ? (
                       <>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => window.open(`/certificate/tc/${s._id}`, "_blank")}
-                          title="Print transfer certificate"
+                          title={
+                            s.status === "passed"
+                              ? "Print school leaving / transfer certificate"
+                              : "Print transfer certificate"
+                          }
                         >
                           <FileText className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => rejoin(s)}
-                          title="Reactivate (undo left)"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </Button>
+                        {s.status === "passed" ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openReadmit(s)}
+                            title="Re-admit into a higher class"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => rejoin(s)}
+                            title="Reactivate (undo left)"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        )}
                       </>
                     ) : (
                       <Button
@@ -1026,6 +1117,78 @@ export default function Students() {
                 Cancel
               </Button>
               <Button type="submit">Mark as left</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-admit finished students into a higher class */}
+      <Dialog open={readmitOpen} onOpenChange={setReadmitOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Re-admit {selectedFinished} student{selectedFinished === 1 ? "" : "s"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitReadmit} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              They come back as active students in the class you choose. The class they passed out
+              of stays in their record, they keep their admission number, and their fee history
+              follows them — so this is a re-enrolment, not an undo.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Joining class</Label>
+                <select
+                  className={selectClass}
+                  value={readmitForm.class}
+                  onChange={(e) => setReadmitForm((f) => ({ ...f, class: e.target.value }))}
+                >
+                  <option value="">Select</option>
+                  {classesUpTo(highestClass).map((c) => (
+                    <option key={c} value={c}>
+                      {classLabel(c)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Section (optional)</Label>
+                <select
+                  className={selectClass}
+                  value={readmitForm.section}
+                  onChange={(e) => setReadmitForm((f) => ({ ...f, section: e.target.value }))}
+                >
+                  <option value="">None</option>
+                  {SECTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label>Session</Label>
+                <Input
+                  value={readmitForm.session}
+                  onChange={(e) => setReadmitForm((f) => ({ ...f, session: e.target.value }))}
+                  placeholder="e.g. 2027-28"
+                />
+              </div>
+            </div>
+            {readmitForm.class === highestClass && (
+              <p className="text-sm text-amber-700">
+                {classLabel(highestClass)} is the last class here, so they will pass out again at the
+                end of this session.
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setReadmitOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={readmitting || !readmitForm.class}>
+                {readmitting ? "Re-admitting…" : "Re-admit"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -96,14 +96,16 @@ export default function StudentDetails() {
             >
               <ScrollText className="h-4 w-4" /> Bonafide Certificate
             </Button>
-            {/* A TC only makes sense once the student has left, so it appears then. */}
-            {student.status === "left" && (
+            {/* A leaving certificate only makes sense once the student has gone —
+                either transferred out, or finished the school's last class. */}
+            {(student.status === "left" || student.status === "passed") && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => window.open(`/certificate/tc/${id}`, "_blank")}
               >
-                <FileText className="h-4 w-4" /> Transfer Certificate
+                <FileText className="h-4 w-4" />{" "}
+                {student.status === "passed" ? "Leaving Certificate" : "Transfer Certificate"}
               </Button>
             )}
           </div>
@@ -120,10 +122,21 @@ export default function StudentDetails() {
         </div>
       </div>
 
-      {student.status === "left" && (
-        <Card className="border-orange-200 bg-orange-50/50">
-          <CardContent className="py-3 text-sm text-orange-800">
-            Left school on <strong>{fmtDate(student.exitDate)}</strong>
+      {(student.status === "left" || student.status === "passed") && (
+        <Card
+          className={
+            student.status === "passed"
+              ? "border-sky-200 bg-sky-50/50"
+              : "border-orange-200 bg-orange-50/50"
+          }
+        >
+          <CardContent
+            className={`py-3 text-sm ${
+              student.status === "passed" ? "text-sky-800" : "text-orange-800"
+            }`}
+          >
+            {student.status === "passed" ? "Passed out on " : "Left school on "}
+            <strong>{fmtDate(student.exitDate)}</strong>
             {student.exitReason ? ` — ${student.exitReason}` : ""}.
           </CardContent>
         </Card>

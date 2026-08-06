@@ -26,6 +26,7 @@ import backupRoutes from "./routes/backup.routes";
 import accessRoutes from "./routes/access.routes";
 import admissionRoutes from "./routes/admission.routes";
 import timetableRoutes from "./routes/timetable.routes";
+import settingRoutes from "./routes/setting.routes";
 
 export const app = express();
 
@@ -68,6 +69,7 @@ app.use("/api/backup", backupRoutes);
 app.use("/api/access", accessRoutes);
 app.use("/api/admissions", admissionRoutes);
 app.use("/api/timetable", timetableRoutes);
+app.use("/api/settings", settingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

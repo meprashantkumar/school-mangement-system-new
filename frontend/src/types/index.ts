@@ -165,10 +165,18 @@ export interface Student {
   serviceFees?: { name: string; amount: number }[];
   creditBalance?: number;
   enrollmentHistory?: Enrollment[];
-  status: "active" | "left" | "inactive";
+  // "passed" = cleared the school's highest class, so they have finished here —
+  // different from leaving part-way through.
+  status: "active" | "left" | "passed" | "inactive";
   exitDate?: string;
   exitReason?: string;
   createdAt?: string;
+}
+
+// The school's academic settings — how far up the classes go.
+export interface SchoolSettings {
+  highestClass: string;
+  classes: string[];
 }
 
 export interface FeeHead {

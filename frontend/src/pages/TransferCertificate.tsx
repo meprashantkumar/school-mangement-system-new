@@ -63,8 +63,9 @@ export default function TransferCertificate() {
 
   // A transfer certificate says the child has left. Issuing one for a student who
   // is still on the rolls would be a false statement, so send the clerk back to
-  // record the leaving first instead of quietly printing it anyway.
-  if (student.status !== "left") {
+  // record the leaving first instead of quietly printing it anyway. Passing out of
+  // the school's last class counts — they have finished and are entitled to one.
+  if (student.status !== "left" && student.status !== "passed") {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
@@ -85,6 +86,7 @@ export default function TransferCertificate() {
 
   const totalDue = invoices.reduce((s, i) => s + (i.dueAmount || 0), 0);
   const duesCleared = totalDue <= 0;
+  const passedOut = student.status === "passed";
 
   // Gender-aware wording, with a neutral fallback when gender isn't recorded.
   const g = student.gender;
@@ -195,7 +197,10 @@ export default function TransferCertificate() {
 
             <div className="mt-5 text-center print:mt-3">
               <span className="inline-block rounded border-2 border-primary px-6 py-1 text-base font-bold uppercase tracking-[0.2em] text-primary">
-                Transfer Certificate
+                {/* A child who finished the school's last class did not transfer
+                    anywhere — they completed their studies here, and the heading
+                    should say so. */}
+                {passedOut ? "School Leaving Certificate" : "Transfer Certificate"}
               </span>
             </div>
 
@@ -229,8 +234,14 @@ export default function TransferCertificate() {
                   not prefixed again here. */}
               {row("Class last studied", cls)}
               {row("Academic session", student.session)}
-              {row("Date of leaving the school", fmtDate(student.exitDate))}
-              {row("Reason for leaving", student.exitReason || "On parent's request")}
+              {row(
+                passedOut ? "Date of completing school" : "Date of leaving the school",
+                fmtDate(student.exitDate)
+              )}
+              {row(
+                "Reason for leaving",
+                student.exitReason || (passedOut ? "Completed studies here" : "On parent's request")
+              )}
               {row(
                 "School dues",
                 duesCleared ? (
@@ -249,9 +260,19 @@ export default function TransferCertificate() {
             {/* Body */}
             <p className="mt-6 text-justify text-[15px] leading-8 print:mt-3 print:text-[12.5px] print:leading-[1.5]">
               This is to certify that the particulars given above have been taken from the records
-              of this school and are correct to the best of our knowledge. {heShe} left the school
-              on <span className="font-semibold">{fmtDate(student.exitDate)}</span>, and no
-              disciplinary action is pending against {hisHer} name. We wish {hisHer} every success
+              of this school and are correct to the best of our knowledge.{" "}
+              {passedOut ? (
+                <>
+                  {heShe} completed {hisHer} studies at this school in {cls} and left on{" "}
+                  <span className="font-semibold">{fmtDate(student.exitDate)}</span>
+                </>
+              ) : (
+                <>
+                  {heShe} left the school on{" "}
+                  <span className="font-semibold">{fmtDate(student.exitDate)}</span>
+                </>
+              )}
+              , and no disciplinary action is pending against {hisHer} name. We wish {hisHer} every success
               in {hisHer} future studies.
             </p>
 

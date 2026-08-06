@@ -3,7 +3,7 @@ import { ArrowUpCircle, RotateCcw } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { PromotionRun, Student } from "@/types";
-import { CLASSES, SECTIONS, classLabel, nextClass, nextSession } from "@/lib/constants";
+import { CLASSES, SECTIONS, classLabel, classesUpTo, nextClassWithin, nextSession } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,27 @@ export default function PromoteStudentsDialog({
   const [promoting, setPromoting] = useState(false);
   const [runs, setRuns] = useState<PromotionRun[]>([]);
   const [undoing, setUndoing] = useState<string | null>(null);
+  // How far this school goes. Promotion stops here — the last class passes out
+  // instead of moving up into a class the school does not teach.
+  const [highestClass, setHighestClass] = useState("12");
+  const [savingHighest, setSavingHighest] = useState(false);
+
+  const saveHighestClass = async (value: string) => {
+    const previous = highestClass;
+    setHighestClass(value); // reflect the choice at once; put it back if it is refused
+    setSavingHighest(true);
+    try {
+      const { data } = await api.put("/settings", { highestClass: value });
+      setHighestClass(data.highestClass);
+      toast.success(data.message);
+      if (klass && !classesUpTo(data.highestClass).includes(klass)) setKlass("");
+    } catch (err: any) {
+      setHighestClass(previous);
+      toast.error(err?.response?.data?.message || "Could not save that");
+    } finally {
+      setSavingHighest(false);
+    }
+  };
 
   const loadRuns = () =>
     api
@@ -76,6 +97,10 @@ export default function PromoteStudentsDialog({
       setPreview([]);
       setFailedIds(new Set());
       loadRuns();
+      api
+        .get("/settings")
+        .then(({ data }) => setHighestClass(data.highestClass || "12"))
+        .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -111,8 +136,8 @@ export default function PromoteStudentsDialog({
       return next;
     });
 
-  const promoteTo = nextClass(klass);
-  const graduating = klass && promoteTo === null;
+  const promoteTo = nextClassWithin(klass, highestClass);
+  const passingOut = !!klass && promoteTo === null;
 
   const submit = async () => {
     if (!klass) return toast.error("Pick a class to promote");
@@ -170,6 +195,25 @@ export default function PromoteStudentsDialog({
             </div>
           )}
 
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">This school teaches up to</span>
+            <select
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+              value={highestClass}
+              disabled={savingHighest}
+              onChange={(e) => saveHighestClass(e.target.value)}
+            >
+              {CLASSES.map((c) => (
+                <option key={c} value={c}>
+                  {classLabel(c)}
+                </option>
+              ))}
+            </select>
+            <span className="text-muted-foreground">
+              — students who pass {classLabel(highestClass)} have finished school.
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="space-y-1.5">
               <Label>From session</Label>
@@ -193,7 +237,7 @@ export default function PromoteStudentsDialog({
               <Label>Class</Label>
               <select className={selectClass} value={klass} onChange={(e) => setKlass(e.target.value)}>
                 <option value="">Select</option>
-                {CLASSES.map((c) => (
+                {classesUpTo(highestClass).map((c) => (
                   <option key={c} value={c}>
                     {classLabel(c)}
                   </option>
@@ -219,10 +263,12 @@ export default function PromoteStudentsDialog({
 
           {klass && (
             <p className="text-sm text-muted-foreground">
-              {graduating ? (
+              {passingOut ? (
                 <>
-                  Class 12 passers will be marked <strong>left (graduated)</strong>. Tick anyone who
-                  is being retained.
+                  {classLabel(klass)} is the last class here, so those who pass are marked{" "}
+                  <strong>passed out</strong> — you can print their certificates afterwards, and
+                  re-admit any of them later if the school adds a higher class. Tick anyone being{" "}
+                  <strong>retained</strong> instead.
                 </>
               ) : (
                 <>
@@ -237,7 +283,9 @@ export default function PromoteStudentsDialog({
           <div className="rounded-lg border">
             <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2 text-sm font-medium">
               <span>
-                {klass ? `Class ${classLabel(klass)}${section ? " " + section : " (all sections)"}` : "Pick a class"}
+                {klass
+                  ? `${classLabel(klass)}${section ? " " + section : " (all sections)"}`
+                  : "Pick a class"}
               </span>
               <span className="text-muted-foreground">
                 {loading ? "Loading…" : `${preview.length} student(s)`}
@@ -283,7 +331,11 @@ export default function PromoteStudentsDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={promoting || !klass || preview.length === 0}>
-            {promoting ? "Promoting…" : `Promote ${preview.length || ""} student(s)`}
+            {promoting
+              ? "Working…"
+              : passingOut
+              ? `Pass out ${preview.length || ""} student(s)`
+              : `Promote ${preview.length || ""} student(s)`}
           </Button>
         </DialogFooter>
       </DialogContent>

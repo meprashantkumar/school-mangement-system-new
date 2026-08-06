@@ -180,18 +180,18 @@ export const getAnalytics = asyncHandler(async (req, res) => {
     }
   }
 
+  // Leaving and passing out are different things and are now separate statuses, so
+  // neither has to be inferred from the wording of the exit reason.
   const [totalActive, newAdmissions, leftSchool, graduated] = await Promise.all([
     Student.countDocuments({ status: "active", ...classMatch }),
     Student.countDocuments({ dateOfAdmission: { $gte: windowStart, $lte: windowEnd }, ...classMatch }),
     Student.countDocuments({
       status: "left",
-      exitReason: { $not: { $regex: "Graduated", $options: "i" } },
       exitDate: { $gte: windowStart, $lte: windowEnd },
       ...classMatch,
     }),
     Student.countDocuments({
-      status: "left",
-      exitReason: { $regex: "Graduated", $options: "i" },
+      status: "passed",
       exitDate: { $gte: windowStart, $lte: windowEnd },
       ...classMatch,
     }),

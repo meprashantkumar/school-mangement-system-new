@@ -87,6 +87,20 @@ export const nextClass = (cls: string): string | null => {
   return CLASSES[idx + 1];
 };
 
+// The ladder as far as this school goes — a school up to Class 8 has no Class 9.
+export const classesUpTo = (highestClass: string): string[] => {
+  const top = CLASSES.indexOf(highestClass);
+  return top === -1 ? CLASSES : CLASSES.slice(0, top + 1);
+};
+
+// Next class within this school. null means the student passes out instead.
+export const nextClassWithin = (cls: string, highestClass: string): string | null => {
+  const ladder = classesUpTo(highestClass);
+  const idx = ladder.indexOf(cls);
+  if (idx === -1) return nextClass(cls);
+  return idx === ladder.length - 1 ? null : ladder[idx + 1];
+};
+
 // "2025-26" -> "2026-27" (best-effort; returns input if it can't parse).
 export const nextSession = (session: string): string => {
   const start = parseInt(session.split("-")[0], 10);

@@ -12,6 +12,7 @@ import {
   markStudentLeft,
   previewImport,
   promoteStudents,
+  readmitStudents,
   rejoinStudent,
   undoPromotion,
   updateStudent,
@@ -30,6 +31,7 @@ router.get("/:id", protect, authorize("superadmin", "admin"), getStudent);
 router.post("/", protect, authorize("superadmin"), createStudent);
 router.post("/import", protect, authorize("superadmin"), importStudents);
 router.post("/import-preview", protect, authorize("superadmin"), previewImport);
+router.post("/readmit", protect, authorize("superadmin"), readmitStudents);
 router.post("/bulk-services", protect, authorize("superadmin"), bulkUpdateServices);
 router.post("/promote", protect, authorize("superadmin"), promoteStudents);
 router.post("/promote/undo/:runId", protect, authorize("superadmin"), undoPromotion);

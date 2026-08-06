@@ -1,6 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
-import { nextClass } from "../utils/academics";
+import { classLabel, classesUpTo, nextClass, nextClassWithin } from "../utils/academics";
+import { getSchoolSetting } from "../models/SchoolSetting";
 import { logAudit, AUDIT } from "../utils/audit";
 import { Student, IStudent } from "../models/Student";
 import { User } from "../models/User";
@@ -159,6 +160,65 @@ export const rejoinStudent = asyncHandler(async (req, res) => {
   res.json({ message: "Student reactivated", student });
 });
 
+// POST /api/students/readmit  { ids: [], class, session, section?, keepRollNo? }
+// Brings finished students back into the school in a higher class — the case a
+// school creates for itself by adding Class 11 and 12 after its Class 10 batch has
+// already passed out. It is a re-enrolment, not an undo: the passing-out year stays
+// in their history, the admission number stays theirs, and their fee ledger follows
+// them, so a re-admitted child is the same person on paper as before.
+export const readmitStudents = asyncHandler(async (req, res) => {
+  const { ids, session, section } = req.body;
+  const cls = req.body.class;
+  if (!Array.isArray(ids) || ids.length === 0) throw new ApiError(400, "Select at least one student");
+  if (!cls || !session) throw new ApiError(400, "A class and a session are required");
+
+  const { highestClass } = await getSchoolSetting();
+  if (!classesUpTo(highestClass).includes(String(cls))) {
+    throw new ApiError(
+      400,
+      `${classLabel(String(cls))} is beyond ${classLabel(highestClass)}, the last class this school teaches. Raise that setting first.`
+    );
+  }
+
+  const students = await Student.find({ _id: { $in: ids } });
+  let readmitted = 0;
+  const skipped: string[] = [];
+
+  for (const s of students) {
+    if (s.status === "active") {
+      skipped.push(`${s.name} is already studying here`);
+      continue;
+    }
+    // Keep where they were before this re-admission, so the record still shows the
+    // class they passed out of and the year they did it.
+    s.enrollmentHistory.push({ session: s.session, class: s.class, section: s.section });
+    s.session = session;
+    s.class = String(cls);
+    if (section !== undefined) s.section = section || undefined;
+    s.status = "active";
+    s.exitDate = undefined;
+    s.exitReason = undefined;
+    await s.save();
+    readmitted += 1;
+  }
+
+  if (readmitted) {
+    logAudit(
+      req,
+      AUDIT.STUDENT,
+      `Re-admitted ${readmitted} student(s) into ${classLabel(String(cls))} for ${session}`
+    );
+  }
+
+  res.json({
+    message: `Re-admitted ${readmitted} student(s) into ${classLabel(String(cls))} (${session})${
+      skipped.length ? `, ${skipped.length} skipped` : ""
+    }.`,
+    readmitted,
+    skipped,
+  });
+});
+
 // POST /api/students/promote
 // { fromSession, fromClass, fromSection?, toSession, failedIds?: string[] }
 //
@@ -170,8 +230,9 @@ export const rejoinStudent = asyncHandler(async (req, res) => {
 // never picks up the old 2B students (still on the previous session) who are due to go
 // to 3B — so the two 2B batches don't merge.
 //
-// Failed students repeat the same class in the new session. Class 12 passers (no next
-// class) are marked as left/graduated.
+// Failed students repeat the same class in the new session. Passing the school's
+// HIGHEST class means finishing school — those students are marked "passed", not
+// promoted into a class the school does not teach.
 export const promoteStudents = asyncHandler(async (req, res) => {
   const { fromSession, fromClass, fromSection, toSession, failedIds = [] } = req.body;
 
@@ -182,7 +243,9 @@ export const promoteStudents = asyncHandler(async (req, res) => {
     throw new ApiError(400, "The target session must be different from the current session");
   }
 
-  const promotedClass = nextClass(fromClass); // null if fromClass has no next (Class 12)
+  // A school that stops at Class 10 must not send its Class 10 into a Class 11.
+  const { highestClass } = await getSchoolSetting();
+  const promotedClass = nextClassWithin(fromClass, highestClass); // null = they have finished
 
   const filter: Record<string, unknown> = {
     session: fromSession,
@@ -196,7 +259,7 @@ export const promoteStudents = asyncHandler(async (req, res) => {
 
   let promoted = 0;
   let retained = 0;
-  let graduated = 0;
+  let passedOut = 0;
   const entries: {
     student: any;
     prevSession: string;
@@ -230,23 +293,24 @@ export const promoteStudents = asyncHandler(async (req, res) => {
       s.class = promotedClass;
       promoted += 1;
     } else {
-      // No next class (Class 12) and passed -> graduated / left school.
-      s.status = "left";
+      // They passed the last class this school teaches, so they have finished here.
+      s.status = "passed";
       s.exitDate = new Date();
-      s.exitReason = s.exitReason || `Graduated (${fromSession})`;
-      graduated += 1;
+      s.exitReason = `Passed out of ${classLabel(fromClass)} (${fromSession})`;
+      passedOut += 1;
     }
 
     await s.save();
   }
 
-  const parts = [`${promoted} promoted`];
+  const parts = promoted ? [`${promoted} promoted`] : [];
   if (retained) parts.push(`${retained} retained`);
-  if (graduated) parts.push(`${graduated} graduated`);
+  if (passedOut) parts.push(`${passedOut} passed out`);
+  if (!parts.length) parts.push("0 promoted");
 
   const message = students.length
-    ? `Class ${fromClass}${fromSection ? " " + fromSection : ""}: ${parts.join(", ")} for ${toSession}.`
-    : `No active students found in ${fromClass}${fromSection ? " " + fromSection : ""} for session ${fromSession}.`;
+    ? `${classLabel(fromClass)}${fromSection ? " " + fromSection : ""}: ${parts.join(", ")} for ${toSession}.`
+    : `No active students found in ${classLabel(fromClass)}${fromSection ? " " + fromSection : ""} for session ${fromSession}.`;
 
   let runId: string | undefined;
   if (students.length) {
@@ -264,7 +328,16 @@ export const promoteStudents = asyncHandler(async (req, res) => {
     logAudit(req, AUDIT.PROMOTION, message);
   }
 
-  res.json({ message, promoted, retained, graduated, matched: students.length, runId });
+  res.json({
+    message,
+    promoted,
+    retained,
+    passedOut,
+    isFinalClass: promotedClass === null,
+    highestClass,
+    matched: students.length,
+    runId,
+  });
 });
 
 // GET /api/students/promote/runs -> recent promotion runs (for the undo list)
@@ -329,7 +402,7 @@ const inPool = async <T>(items: T[], size: number, job: (item: T, index: number)
 // silent about (a CSV without a mother's-name column must not erase it).
 const shapeImportRow = (row: any) => {
   const genders = ["Male", "Female", "Other"];
-  const statuses = ["active", "left", "inactive"];
+  const statuses = ["active", "left", "passed", "inactive"];
   const given = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== "";
 
   const create: Record<string, unknown> = {};
