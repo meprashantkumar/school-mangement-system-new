@@ -58,19 +58,30 @@ const applyMark = (row: AttendanceRow, next: AttendanceStatus | null): Attendanc
 
 type TabKey = "attendance" | "results" | "timetable" | "children";
 
-function PctBadge({ pct }: { pct: number | null }) {
+// The percentage plus the days it is built from. At the end of the year a teacher
+// filling in a report card or a leaving form needs "18 of 20", not just "90%".
+// The counts are recomputed as they tap, so this stays live with the badge.
+function PctBadge({ pct, present, absent }: { pct: number | null; present?: number; absent?: number }) {
   if (pct === null)
     return <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">—</span>;
   const good = pct >= 75;
+  const days = present !== undefined && absent !== undefined ? present + absent : null;
   return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-xs font-bold",
-        good ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+    <>
+      <span
+        className={cn(
+          "rounded-full px-2 py-0.5 text-xs font-bold",
+          good ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+        )}
+      >
+        {pct}%
+      </span>
+      {days !== null && (
+        <span className="text-xs text-muted-foreground">
+          {present}/{days} days
+        </span>
       )}
-    >
-      {pct}%
-    </span>
+    </>
   );
 }
 
@@ -487,7 +498,7 @@ export default function TeacherDashboard() {
                             <p className="truncate font-medium">{s.name}</p>
                             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                               <span className="text-xs text-muted-foreground">Adm {s.admissionNo}</span>
-                              <PctBadge pct={s.pct} />
+                              <PctBadge pct={s.pct} present={s.present} absent={s.absent} />
                             </div>
                           </div>
                           <div className="flex shrink-0 gap-1.5 sm:gap-2">

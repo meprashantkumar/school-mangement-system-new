@@ -34,11 +34,21 @@ const scopeText = (classes: string[]) =>
     ? "Whole school"
     : classes.map(classLabel).join(", ");
 
-function Pct({ pct }: { pct: number | null }) {
+// The percentage, and the days behind it. A teacher filling in a school-leaving form
+// or a scholarship application needs "18 of 20", not just "90%".
+function Pct({ pct, present, absent }: { pct: number | null; present?: number; absent?: number }) {
   if (pct === null) return <span className="text-muted-foreground">—</span>;
+  const days = present !== undefined && absent !== undefined ? present + absent : null;
   return (
-    <span className={cn("font-semibold", pct >= 75 ? "text-emerald-600" : "text-rose-600")}>
-      {pct}%
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className={cn("font-semibold", pct >= 75 ? "text-emerald-600" : "text-rose-600")}>
+        {pct}%
+      </span>
+      {days !== null && (
+        <span className="text-xs text-muted-foreground">
+          {present}/{days} days
+        </span>
+      )}
     </span>
   );
 }
@@ -414,7 +424,7 @@ export default function AttendanceView() {
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Pct pct={s.pct} />
+                            <Pct pct={s.pct} present={s.present} absent={s.absent} />
                           </TableCell>
                         </TableRow>
                       ))
