@@ -103,9 +103,25 @@ export default function ClassTimetable() {
         const [day, period] = k.split("_").map(Number);
         slots.push({ day, period, subject: c.subject, subjectName: c.subjectName, teacher: c.teacher, teacherName: c.teacherName });
       });
-      const { data } = await api.put("/timetable/class", { class: klass, section, session, slots });
+      // The server refuses with 409 when a teacher would be in two classes at once,
+      // and says which. That normally cannot happen — busy teachers are hidden from
+      // the picker — but it does if somebody else edited another class while this one
+      // was open. Show the clashes and let the office decide rather than saving a
+      // timetable that cannot actually be taught.
+      const put = (confirmIt: boolean) =>
+        api.put("/timetable/class", { class: klass, section, session, slots, confirm: confirmIt });
+
+      let res;
+      try {
+        res = await put(false);
+      } catch (err: any) {
+        const d = err?.response?.data;
+        if (err?.response?.status !== 409 || !d?.needsConfirmation) throw err;
+        if (!confirm(`${d.message}\n\n${(d.clashes || []).join("\n")}\n\nSave anyway?`)) return;
+        res = await put(true);
+      }
       toast.success("Timetable saved");
-      (data.warnings || []).forEach((w: string) => toast(w, { icon: "⚠️", duration: 6000 }));
+      (res.data.warnings || []).forEach((w: string) => toast(w, { icon: "⚠️", duration: 6000 }));
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Save failed");
     } finally {

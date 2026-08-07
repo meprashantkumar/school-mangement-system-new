@@ -57,5 +57,11 @@ export const getSchoolSetting = async (): Promise<ISchoolSetting> => {
     setCachedSession(existing.currentSession);
     return existing;
   }
-  return SchoolSetting.create({});
+  // Same on the create path. A settings document that is missing and gets recreated
+  // (a restore that dropped it, a first run after one was removed) starts on the
+  // build's default year, and the year held in memory has to follow it — otherwise
+  // the app keeps running a year that nothing on disk says any more.
+  const created = await SchoolSetting.create({});
+  setCachedSession(created.currentSession);
+  return created;
 };

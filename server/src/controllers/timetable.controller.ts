@@ -94,36 +94,59 @@ export const saveClassTimetable = asyncHandler(async (req, res) => {
         .filter((s: ITimetableSlot) => Number.isFinite(s.day) && Number.isFinite(s.period))
     : [];
 
+  // Is a teacher being put in two rooms at once? This is checked BEFORE the write,
+  // not after. The editor hides teachers who are already booked, so the ordinary path
+  // never gets here — but two admins editing two classes at the same moment each
+  // fetched that list before the other saved, so neither is offered the clash. The
+  // save used to go through and merely mention it afterwards, which left the timetable
+  // genuinely wrong and only told whoever happened to save second.
+  const clashes: string[] = [];
+  const teacherSlots = slots.filter((s) => s.teacher);
+  if (teacherSlots.length) {
+    // Every other timetable in the session — including other SECTIONS of this class,
+    // since 5-A and 5-B run at the same time and share a staff room.
+    const others = await ClassTimetable.find({
+      session,
+      "slots.teacher": { $in: teacherSlots.map((s) => s.teacher) },
+    }).select("class section slots");
+    for (const s of teacherSlots) {
+      for (const o of others) {
+        if (o.class === cls && o.section === section) continue; // the one being edited
+        const hit = o.slots.find(
+          (x) => String(x.teacher) === String(s.teacher) && x.day === s.day && x.period === s.period
+        );
+        if (hit) {
+          const msg = `${s.teacherName || "A teacher"} is already teaching ${o.class}-${o.section} on day ${s.day}, period ${s.period}.`;
+          if (!clashes.includes(msg)) clashes.push(msg);
+        }
+      }
+    }
+  }
+
+  // Refused rather than warned — but the office can still say "yes, do it anyway",
+  // because a school occasionally means it (a teacher supervising two halves of a
+  // split class). Same shape as marking a holiday over days already registered.
+  if (clashes.length && req.body.confirm !== true) {
+    return res.status(409).json({
+      needsConfirmation: true,
+      message: `${clashes.length} clash(es): a teacher cannot be in two classes at once.`,
+      clashes,
+    });
+  }
+
   const timetable = await ClassTimetable.findOneAndUpdate(
     { class: cls, section, session },
     { $set: { slots, updatedBy: req.user?._id } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
-  // Warn (don't block) if a teacher is double-booked across classes at the same time.
-  const warnings: string[] = [];
-  const teacherSlots = slots.filter((s) => s.teacher);
-  if (teacherSlots.length) {
-    const others = await ClassTimetable.find({
-      session,
-      _id: { $ne: timetable._id },
-      "slots.teacher": { $in: teacherSlots.map((s) => s.teacher) },
-    });
-    for (const s of teacherSlots) {
-      for (const o of others) {
-        const hit = o.slots.find(
-          (x) => String(x.teacher) === String(s.teacher) && x.day === s.day && x.period === s.period
-        );
-        if (hit) {
-          const msg = `${s.teacherName || "A teacher"} is also assigned to ${o.class}-${o.section} at the same time (Day ${s.day}, Period ${s.period}).`;
-          if (!warnings.includes(msg)) warnings.push(msg);
-        }
-      }
-    }
-  }
-
-  logAudit(req, AUDIT.TIMETABLE, `Saved timetable for ${cls}-${section} (${session})`);
-  res.json({ message: "Timetable saved", timetable, warnings });
+  logAudit(
+    req,
+    AUDIT.TIMETABLE,
+    `Saved timetable for ${cls}-${section} (${session})` +
+      (clashes.length ? ` — saved with ${clashes.length} clash(es) accepted` : "")
+  );
+  res.json({ message: "Timetable saved", timetable, warnings: clashes });
 });
 
 // GET /api/timetable/busy?session=&excludeClass=&excludeSection=  (staff)

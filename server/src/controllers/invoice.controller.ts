@@ -19,6 +19,35 @@ const MONTHS = [
 // so a class set up once with its full fee menu can be billed selectively (e.g.
 // Tuition + Transport every month, Exam Fee only in exam months). When omitted or
 // empty, every item in the structure is billed (the original behaviour).
+// Draws a student's advance credit down onto an invoice that has money owing, and
+// records it as a "credit" payment so the ledger still shows where it went. Used both
+// for a brand-new invoice and for one that has just been topped up with a fee added
+// after the month was billed — a family in credit should not be chased for either.
+async function applyCredit(student: any, invoice: any) {
+  if ((student.creditBalance || 0) <= 0 || invoice.dueAmount <= 0) return;
+  const use = Math.min(student.creditBalance, invoice.dueAmount);
+  if (use <= 0) return;
+  await createPayment({
+    student: student._id,
+    invoice: invoice._id,
+    allocations: [
+      {
+        invoice: invoice._id,
+        period: invoice.period,
+        periodLabel: invoice.periodLabel,
+        amount: use,
+      },
+    ],
+    amount: use,
+    mode: "credit",
+    note: "Auto-applied from advance credit",
+  });
+  invoice.paidAmount += use;
+  await invoice.save();
+  student.creditBalance -= use;
+  await student.save();
+}
+
 async function generateForStructure(
   structure: IFeeStructure,
   m: number,
@@ -41,28 +70,9 @@ async function generateForStructure(
 
   let created = 0;
   let skipped = 0;
+  let toppedUp = 0;
+  const addedNames = new Set<string>();
   for (const student of students) {
-    // One invoice per student per month, PERIOD — not per structure. If the class
-    // ever ends up with two structures for the same session (e.g. one created
-    // instead of edited), checking by structure would bill the student once per
-    // structure, double-counting shared items like Transport. Any existing invoice
-    // for this month in this session means the student is already billed: skip.
-    //
-    // "Already billed" means billed FROM A STRUCTURE, hence the feeStructure check.
-    // Extra charges (a tie, a book) sit on their own structure-less invoice for the
-    // month — without this they would count as "already billed" and the student's
-    // actual monthly fee would never be generated at all.
-    const exists = await Invoice.findOne({
-      student: student._id,
-      period,
-      academicYear: structure.academicYear,
-      feeStructure: { $exists: true },
-    });
-    if (exists) {
-      skipped += 1;
-      continue;
-    }
-
     // Mandatory items for all; optional items only if the student opted in.
     // A per-student override (e.g. a custom Transport fee) wins over the class amount.
     const opted = student.optedServices || [];
@@ -77,6 +87,46 @@ async function generateForStructure(
 
     if (items.length === 0) {
       skipped += 1;
+      continue;
+    }
+
+    // One invoice per student per month, PERIOD — not per structure. If the class
+    // ever ends up with two structures for the same session (e.g. one created
+    // instead of edited), checking by structure would bill the student once per
+    // structure, double-counting shared items like Transport.
+    //
+    // "Already billed" means billed FROM A STRUCTURE, hence the feeStructure check.
+    // Extra charges (a tie, a book) sit on their own structure-less invoice for the
+    // month — without this they would count as "already billed" and the student's
+    // actual monthly fee would never be generated at all.
+    const exists = await Invoice.findOne({
+      student: student._id,
+      period,
+      academicYear: structure.academicYear,
+      feeStructure: { $exists: true },
+    });
+    if (exists) {
+      // The month is billed — but the fee menu may have GAINED something since (an
+      // Exam Fee added after Tuition had already gone out). Skipping the whole
+      // invoice meant that fee never reached anybody, and for a family who had
+      // already PAID there was no way to charge it at all: deleting the run refuses
+      // to touch an invoice with a payment against it, and rightly so. So instead of
+      // skipping, add what is missing and leave everything already on the bill alone.
+      const already = new Set(exists.items.map((i) => i.name.trim().toLowerCase()));
+      const missing = items.filter((i) => !already.has(i.name.trim().toLowerCase()));
+      if (!missing.length) {
+        skipped += 1;
+        continue;
+      }
+      exists.items.push(...missing);
+      // Saving recomputes the totals and the status, so a bill that was settled goes
+      // back to part-paid for exactly the amount that has just been added — nothing
+      // already paid is disturbed, and the receipts against it still stand.
+      await exists.save();
+      await syncInvoiceLateFee(exists);
+      missing.forEach((i) => addedNames.add(i.name));
+      toppedUp += 1;
+      await applyCredit(student, exists);
       continue;
     }
 
@@ -105,33 +155,10 @@ async function generateForStructure(
 
     // Auto-settle from the student's advance credit (e.g. a prepaid year): draw
     // down onto this fresh invoice and record it as a "credit" payment.
-    if (saved && (student.creditBalance || 0) > 0 && invoice.dueAmount > 0) {
-      const use = Math.min(student.creditBalance, invoice.dueAmount);
-      if (use > 0) {
-        await createPayment({
-          student: student._id,
-          invoice: invoice._id,
-          allocations: [
-            {
-              invoice: invoice._id,
-              period: invoice.period,
-              periodLabel: invoice.periodLabel,
-              amount: use,
-            },
-          ],
-          amount: use,
-          mode: "credit",
-          note: "Auto-applied from advance credit",
-        });
-        invoice.paidAmount += use;
-        await invoice.save();
-        student.creditBalance -= use;
-        await student.save();
-      }
-    }
+    if (saved) await applyCredit(student, invoice);
   }
 
-  return { created, skipped, total: students.length, period, periodLabel };
+  return { created, skipped, toppedUp, addedItems: [...addedNames], total: students.length, period, periodLabel };
 }
 
 // POST /api/invoices/generate  { feeStructureId, month (1-12), year, dueDate? }
@@ -153,7 +180,7 @@ export const generateInvoices = asyncHandler(async (req, res) => {
   const structure = await FeeStructure.findById(feeStructureId);
   if (!structure) throw new ApiError(404, "Fee structure not found");
 
-  const { created, skipped, total, periodLabel } = await generateForStructure(
+  const { created, skipped, toppedUp, addedItems, total, periodLabel } = await generateForStructure(
     structure,
     m,
     y,
@@ -161,10 +188,15 @@ export const generateInvoices = asyncHandler(async (req, res) => {
     includeItems
   );
 
-  const message = `Generated ${created} invoice(s) for ${periodLabel} (Class ${structure.class})${
-    skipped ? `, skipped ${skipped} already generated` : ""
-  }`;
-  if (created) {
+  const message =
+    `Generated ${created} invoice(s) for ${periodLabel} (Class ${structure.class})` +
+    // Say this out loud: money has been added to bills that were already issued, and
+    // some of those bills may have been settled. The office needs to know which fee.
+    (toppedUp
+      ? `, added ${addedItems.join(", ")} to ${toppedUp} bill(s) already issued for this month`
+      : "") +
+    (skipped ? `, skipped ${skipped} already generated` : "");
+  if (created || toppedUp) {
     logAudit(
       req,
       AUDIT.FEE_GENERATION,
@@ -172,7 +204,7 @@ export const generateInvoices = asyncHandler(async (req, res) => {
     );
   }
 
-  res.json({ message, created, skipped, totalStudents: total });
+  res.json({ message, created, skipped, toppedUp, addedItems, totalStudents: total });
 });
 
 // POST /api/invoices/generate-bulk  { month (1-12), year, dueDate?, includeItems?, classes? }
@@ -218,26 +250,35 @@ export const generateBulkInvoices = asyncHandler(async (req, res) => {
 
   let totalCreated = 0;
   let totalSkipped = 0;
+  let totalToppedUp = 0;
+  const allAdded = new Set<string>();
   const results = [];
   for (const s of structures) {
     const r = await generateForStructure(s, m, y, dueDate, includeItems);
     totalCreated += r.created;
     totalSkipped += r.skipped;
+    totalToppedUp += r.toppedUp;
+    r.addedItems.forEach((n) => allAdded.add(n));
     results.push({
       structureId: s._id,
       structureName: s.name,
       class: s.class,
       created: r.created,
       skipped: r.skipped,
+      toppedUp: r.toppedUp,
+      addedItems: r.addedItems,
       total: r.total,
     });
   }
 
   const periodLabel = `${MONTHS[m - 1]} ${y}`;
-  const message = `${periodLabel}: generated ${totalCreated} invoice(s) across ${structures.length} class(es)${
-    totalSkipped ? `, skipped ${totalSkipped} already generated` : ""
-  }`;
-  if (totalCreated) {
+  const message =
+    `${periodLabel}: generated ${totalCreated} invoice(s) across ${structures.length} class(es)` +
+    (totalToppedUp
+      ? `, added ${[...allAdded].join(", ")} to ${totalToppedUp} bill(s) already issued for this month`
+      : "") +
+    (totalSkipped ? `, skipped ${totalSkipped} already generated` : "");
+  if (totalCreated || totalToppedUp) {
     logAudit(
       req,
       AUDIT.FEE_GENERATION,
@@ -247,7 +288,15 @@ export const generateBulkInvoices = asyncHandler(async (req, res) => {
     );
   }
 
-  res.json({ message, periodLabel, totalCreated, totalSkipped, results });
+  res.json({
+    message,
+    periodLabel,
+    totalCreated,
+    totalSkipped,
+    totalToppedUp,
+    addedItems: [...allAdded],
+    results,
+  });
 });
 
 // GET /api/invoices/summary?session=&class=

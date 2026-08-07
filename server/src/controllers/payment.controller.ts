@@ -89,8 +89,16 @@ export const recordCounterPayment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invoice and a valid amount are required");
   }
 
+  // An unrecognised mode used to be quietly filed as cash. A cheque mistyped by a
+  // caller would then vanish from the "awaiting clearance" list and inflate the cash
+  // takings, with nothing on the receipt to show it. Absent still means cash — some
+  // callers do not send one — but a value that is present and wrong is refused.
   const allowedModes = ["cash", "cheque", "upi"];
-  const payMode = allowedModes.includes(mode) ? mode : "cash";
+  const noMode = mode === undefined || mode === null || String(mode).trim() === "";
+  if (!noMode && !allowedModes.includes(mode)) {
+    throw new ApiError(400, `"${mode}" is not a way of paying — use ${allowedModes.join(", ")}`);
+  }
+  const payMode = noMode ? "cash" : mode;
 
   const invoice = await Invoice.findById(invoiceId);
   if (!invoice) throw new ApiError(404, "Invoice not found");
@@ -138,8 +146,16 @@ export const recordCollection = asyncHandler(async (req, res) => {
   if (!studentId || !amt || amt <= 0) {
     throw new ApiError(400, "Student and a valid amount are required");
   }
+  // An unrecognised mode used to be quietly filed as cash. A cheque mistyped by a
+  // caller would then vanish from the "awaiting clearance" list and inflate the cash
+  // takings, with nothing on the receipt to show it. Absent still means cash — some
+  // callers do not send one — but a value that is present and wrong is refused.
   const allowedModes = ["cash", "cheque", "upi"];
-  const payMode = allowedModes.includes(mode) ? mode : "cash";
+  const noMode = mode === undefined || mode === null || String(mode).trim() === "";
+  if (!noMode && !allowedModes.includes(mode)) {
+    throw new ApiError(400, `"${mode}" is not a way of paying — use ${allowedModes.join(", ")}`);
+  }
+  const payMode = noMode ? "cash" : mode;
 
   const student = await Student.findById(studentId);
   if (!student) throw new ApiError(404, "Student not found");
