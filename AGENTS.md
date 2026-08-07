@@ -409,25 +409,43 @@ These are standing instructions, not preferences to re-negotiate.
   against the actual database using throwaway records or an absurd future period (e.g. May 2031),
   then clean up completely and confirm the row counts are back to where they started. Report failures
   honestly with the output.
-- The deployment guides and PDFs at the repo root are intentionally **untracked**.
+- The **PDF guides** at the repo root (`DEPLOYMENT_GUIDE`, `GDRIVE_BACKUP_SETUP`, `ORACLE_DEPLOYMENT`,
+  `SCHOOL_ERP_FEATURES`) are intentionally **untracked** — they name servers, keys and accounts. The
+  Docker guide, `DOCKER.md`, `deploy/multi-school/` and `deploy/backup/` **are** committed, because a
+  deployment runbook nobody else can read is not a runbook. Keep it that way: procedure in the repo,
+  specifics out of it.
 
 ---
 
 ## 13. Where the rest of the documentation lives
 
-At the repo root, not committed:
+**In the repo — you have these from a plain clone, and they are enough to deploy and to set up
+backups from scratch:**
 
 | File | Covers |
 |---|---|
-| `DEPLOY_DOCKER_GUIDE.html` / `.pdf` | Docker deployment start to finish; **Step 15** is the full runbook for adding a 2nd/3rd school on its own domain; Step 17 is updating to the latest code |
-| `DEPLOYMENT_GUIDE.md` / `.pdf` | The non-Docker (pm2 + nginx) deployment |
+| `DEPLOY_DOCKER_GUIDE.html` / `.pdf` | Docker deployment start to finish. **Step 20** is the runbook for the multi-school small-box layout; **Step 21** is renewing HTTPS when certbot expires |
 | `DOCKER.md` | Short compose runbook |
-| `GDRIVE_BACKUP_SETUP.pdf` | Connecting rclone to Google Drive |
-| `ORACLE_DEPLOYMENT.pdf` | Oracle Cloud specifics |
-| `SCHOOL_ERP_FEATURES.pdf` | Feature list for showing to schools |
+| `deploy/multi-school/` | Compose files, `Caddyfile`, and `*.env.example` for the several-schools-one-box track |
+| `deploy/backup/README.md` | **Backups end to end** — the Google Drive setup (§3b) the production boxes actually use, the multi-school Docker case, retention, and restoring |
+| `deploy/backup/sfms-backup.sh`, `sfms-restore.sh`, `sfms-backup.env.sample` | The scripts and their config template |
 
-Server IPs, domains, SSH key filenames and the backup Google account are in those guides — kept out
-of this file on purpose.
+**Not committed** — these hold server IPs, domains, SSH key filenames and the backup Google account,
+so they stay on the owner's machine. Nothing in them is *required*: each has a committed equivalent
+above. Ask the owner if you need the specifics.
+
+| File | Covers | Committed equivalent |
+|---|---|---|
+| `DEPLOYMENT_GUIDE.md` / `.pdf` | Non-Docker (pm2 + nginx) deployment | §10 below has the update procedure |
+| `GDRIVE_BACKUP_SETUP.pdf` | Connecting rclone to Google Drive | `deploy/backup/README.md` §3b |
+| `ORACLE_DEPLOYMENT.pdf` | Oracle Cloud specifics | — |
+| `SCHOOL_ERP_FEATURES.pdf` | Feature list for showing to schools | — |
+
+> **Backups are the one thing with no committed fallback if you skip the README.** Read
+> `deploy/backup/README.md` before touching a backup on any box — in particular §3b (Google Drive:
+> use your *own* OAuth client, and publish the consent screen to Production or the token dies after
+> 7 days) and the multi-school section (mongod is in a container with **no published port**, and each
+> school is a **separate database** — one `MONGO_URI` backs up one school, not all of them).
 
 ---
 
